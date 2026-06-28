@@ -44,6 +44,7 @@ publication_versions_collection = db["publication_versions"]
 moderation_queue_collection = db["moderation_queue"]
 copyright_declarations_collection = db["copyright_declarations"]
 book_chunks_collection = db["book_chunks"]
+moderators_collection = db["moderators"]
 
 UPLOAD_FOLDER = 'uploads/books'
 COVER_FOLDER = 'uploads/covers'
@@ -2166,9 +2167,87 @@ def report_book():
     return jsonify({"message": "Thank you. Your report has been submitted to the moderation team."}), 200
 
 
+# ===== Moderator Authentication Gate Verification Helper =====
+def verify_moderator_token():
+    token = request.headers.get("Authorization")
+    if not token:
+        return None, "Missing authentication token"
+        
+    try:
+        token_val = token.split(" ")[-1]
+        decoded = jwt.decode(token_val, app.config['SECRET_KEY'], algorithms=['HS256'])
+        email = decoded.get("email")
+        role = decoded.get("role")
+        if role != "moderator":
+            return None, "Unauthorized: Requires moderator role"
+            
+        mod = moderators_collection.find_one({"email": email})
+        if not mod:
+            return None, "Unauthorized: Moderator profile not found"
+            
+        return email, None
+    except jwt.ExpiredSignatureError:
+        return None, "Token has expired"
+    except jwt.InvalidTokenError:
+        return None, "Invalid authentication token"
+
+# ===== Moderator Authentication APIs =====
+@app.route("/api/moderator/register", methods=["POST"])
+def register_moderator():
+    data = request.get_json()
+    email = data.get("email", "").strip()
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+    
+    if not email or not username or not password:
+        return jsonify({"error": "Missing email, username, or password"}), 400
+        
+    exists = moderators_collection.find_one({"email": email})
+    if exists:
+        return jsonify({"error": "Moderator email already registered"}), 400
+        
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    moderators_collection.insert_one({
+        "email": email,
+        "username": username,
+        "password": hashed,
+        "created_at": datetime.datetime.utcnow()
+    })
+    return jsonify({"message": "Moderator registered successfully"}), 201
+
+@app.route("/api/moderator/login", methods=["POST"])
+def login_moderator():
+    data = request.get_json()
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    
+    if not email or not password:
+        return jsonify({"error": "Missing email or password"}), 400
+        
+    mod = moderators_collection.find_one({"email": email})
+    if not mod or not bcrypt.checkpw(password.encode('utf-8'), mod["password"].encode('utf-8')):
+        return jsonify({"error": "Invalid moderator email or password"}), 401
+        
+    token = jwt.encode({
+        "email": email,
+        "role": "moderator",
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+    }, app.config['SECRET_KEY'], algorithm='HS256')
+    
+    return jsonify({
+        "token": token,
+        "username": mod.get("username"),
+        "email": email
+    }), 200
+
+
 # ===== Moderator Queue Endpoint =====
 @app.route("/api/moderator/queue", methods=["GET"])
 def get_moderator_queue():
+    email, error_msg = verify_moderator_token()
+    if error_msg:
+        return jsonify({"error": error_msg}), 401
+        
     show_resolved = request.args.get("show_resolved") == "true"
     query = {} if show_resolved else {"status": "pending"}
     queue_items = list(moderation_queue_collection.find(query).sort("created_at", -1))
@@ -2181,6 +2260,10 @@ def get_moderator_queue():
 # ===== Moderator Side-by-Side Comparison API =====
 @app.route("/api/moderator/compare/<book_id>", methods=["GET"])
 def get_moderator_compare(book_id):
+    email, error_msg = verify_moderator_token()
+    if error_msg:
+        return jsonify({"error": error_msg}), 401
+        
     try:
         book = books_collection.find_one({"_id": ObjectId(book_id)})
     except Exception:
@@ -2247,6 +2330,10 @@ def get_moderator_compare(book_id):
 # ===== Moderator Action Endpoint =====
 @app.route("/api/moderator/action", methods=["POST"])
 def post_moderator_action():
+    email, error_msg = verify_moderator_token()
+    if error_msg:
+        return jsonify({"error": error_msg}), 401
+        
     data = request.get_json()
     book_id = data.get("bookId")
     action = data.get("action") 
@@ -2305,6 +2392,10 @@ def post_moderator_action():
 # ===== Moderator Strike Overview & Override API =====
 @app.route("/api/moderator/strikes/<email>", methods=["GET"])
 def get_user_strikes(email):
+    mod_email, error_msg = verify_moderator_token()
+    if error_msg:
+        return jsonify({"error": error_msg}), 401
+        
     strike_doc = user_strikes_collection.find_one({"email": email})
     if not strike_doc:
         return jsonify({"strikes": 0, "status": "active", "history": []}), 200
@@ -2315,6 +2406,10 @@ def get_user_strikes(email):
 
 @app.route("/api/moderator/strikes/override", methods=["POST"])
 def override_user_strikes():
+    mod_email, error_msg = verify_moderator_token()
+    if error_msg:
+        return jsonify({"error": error_msg}), 401
+        
     data = request.get_json()
     email = data.get("email")
     action = data.get("action") 

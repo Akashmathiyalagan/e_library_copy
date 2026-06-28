@@ -17,19 +17,39 @@ const ModeratorDashboard = () => {
   const [error, setError] = useState(null);
   const [showResolved, setShowResolved] = useState(false);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("moderatorToken");
+    return { headers: { Authorization: `Bearer ${token}` } };
+  };
+
+  const handleAxiosError = (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("moderatorToken");
+      navigate("/moderator-auth");
+    }
+  };
+
   useEffect(() => {
+    const token = localStorage.getItem("moderatorToken");
+    if (!token) {
+      navigate("/moderator-auth");
+      return;
+    }
     fetchQueue(showResolved);
   }, [showResolved]);
 
   const fetchQueue = async (resolvedVal = showResolved) => {
+    const token = localStorage.getItem("moderatorToken");
+    if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`http://localhost:5000/api/moderator/queue?show_resolved=${resolvedVal}`);
+      const res = await axios.get(`http://localhost:5000/api/moderator/queue?show_resolved=${resolvedVal}`, getAuthHeaders());
       setQueue(res.data);
     } catch (err) {
       console.error("Queue fetch error:", err);
       setError("Failed to fetch moderation queue.");
+      handleAxiosError(err);
     } finally {
       setLoading(false);
     }
@@ -43,7 +63,7 @@ const ModeratorDashboard = () => {
     setComments("");
 
     try {
-      const compareRes = await axios.get(`http://localhost:5000/api/moderator/compare/${item.book_id}`);
+      const compareRes = await axios.get(`http://localhost:5000/api/moderator/compare/${item.book_id}`, getAuthHeaders());
       setCompareData(compareRes.data);
       
       if (item.uploader) {
@@ -52,6 +72,7 @@ const ModeratorDashboard = () => {
       }
     } catch (err) {
       console.error("Comparison fetch error:", err);
+      handleAxiosError(err);
     } finally {
       setLoadingCompare(false);
     }
@@ -59,10 +80,11 @@ const ModeratorDashboard = () => {
 
   const fetchStrikes = async (email) => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/moderator/strikes/${email}`);
+      const res = await axios.get(`http://localhost:5000/api/moderator/strikes/${email}`, getAuthHeaders());
       setStrikeDetails(res.data);
     } catch (err) {
       console.error("Strikes fetch error:", err);
+      handleAxiosError(err);
     }
   };
 
@@ -74,7 +96,7 @@ const ModeratorDashboard = () => {
         bookId: selectedItem.book_id,
         action,
         reason: comments
-      });
+      }, getAuthHeaders());
       alert(`Moderator action '${action}' recorded.`);
       setSelectedItem(null);
       setCompareData(null);
@@ -83,6 +105,7 @@ const ModeratorDashboard = () => {
     } catch (err) {
       console.error("Error processing moderator action:", err);
       alert("Failed to process moderator action.");
+      handleAxiosError(err);
     } finally {
       setLoading(false);
     }
@@ -94,12 +117,13 @@ const ModeratorDashboard = () => {
       const res = await axios.post("http://localhost:5000/api/moderator/strikes/override", {
         email: strikeEmail,
         action
-      });
+      }, getAuthHeaders());
       alert(res.data.message);
       fetchStrikes(strikeEmail);
     } catch (err) {
       console.error("Error overriding strikes:", err);
       alert("Failed to override strikes.");
+      handleAxiosError(err);
     }
   };
 
@@ -112,8 +136,13 @@ const ModeratorDashboard = () => {
           <span className="badge-mod">MODERATION PANEL</span>
         </div>
         <div className="nav-buttons">
-          <button className="mod-btn" onClick={() => navigate("/PublisherDashboard")}>Author Hub</button>
-          <button className="mod-btn" onClick={() => navigate("/")}>Reader Catalog</button>
+          <button className="mod-btn" onClick={() => navigate("/AuthorLogin")}>Author Hub</button>
+          <button className="mod-btn" onClick={() => navigate("/login-register")}>Reader Catalog</button>
+          <button className="mod-btn logout-btn" onClick={() => {
+            localStorage.removeItem("moderatorToken");
+            localStorage.removeItem("moderatorName");
+            navigate("/moderator-auth");
+          }} style={{ backgroundColor: "#c0392b" }}>Logout</button>
         </div>
       </nav>
 

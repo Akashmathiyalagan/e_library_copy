@@ -15,6 +15,7 @@ import AuthorProfile from "./AuthorProfile.jsx";
 import ForgotPassword from "./ForgotPassword.jsx";
 import EditBook from "./EditBook.jsx";
 import ModeratorDashboard from "./ModeratorDashboard.jsx";
+import ModeratorAuth from "./ModeratorAuth.jsx";
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
         <Route path="/UploadBook" element={<UploadBook />} />
         <Route path="/edit-book/:bookId" element={<EditBook />} />
         <Route path="/moderator-dashboard" element={<ModeratorDashboard />} />
+        <Route path="/moderator-auth" element={<ModeratorAuth />} />
         <Route path="/PaymentPage" element={<PaymentPage />} />
         <Route path="/OpenBookPage/:bookId" element={<OpenBookPage />} />
       </Routes>
