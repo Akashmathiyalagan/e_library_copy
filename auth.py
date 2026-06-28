@@ -2104,7 +2104,9 @@ def report_book():
 # ===== Moderator Queue Endpoint =====
 @app.route("/api/moderator/queue", methods=["GET"])
 def get_moderator_queue():
-    queue_items = list(moderation_queue_collection.find({"status": "pending"}))
+    show_resolved = request.args.get("show_resolved") == "true"
+    query = {} if show_resolved else {"status": "pending"}
+    queue_items = list(moderation_queue_collection.find(query).sort("created_at", -1))
     for item in queue_items:
         item["_id"] = str(item["_id"])
         item["created_at"] = item["created_at"].isoformat() if isinstance(item["created_at"], datetime.datetime) else str(item["created_at"])
@@ -2135,6 +2137,17 @@ def get_moderator_compare(book_id):
         v["_id"] = str(v["_id"])
         v["updated_at"] = v["updated_at"].isoformat() if isinstance(v["updated_at"], datetime.datetime) else str(v["updated_at"])
 
+    q_entry = moderation_queue_collection.find_one({"book_id": book_id})
+    q_data = None
+    if q_entry:
+        q_data = {
+            "status": q_entry.get("status"),
+            "resolved_by": q_entry.get("resolved_by"),
+            "resolved_at": q_entry.get("resolved_at").isoformat() if isinstance(q_entry.get("resolved_at"), datetime.datetime) else str(q_entry.get("resolved_at")),
+            "action_taken": q_entry.get("action_taken"),
+            "resolution_reason": q_entry.get("resolution_reason")
+        }
+
     return jsonify({
         "book": {
             "id": str(book["_id"]),
@@ -2155,11 +2168,14 @@ def get_moderator_compare(book_id):
         } if matched_book else None,
         "plagiarism_report": {
             "similarity_score": report.get("similarity_score", 0.0) if report else 0.0,
+            "risk_level": report.get("risk_level", "LOW") if report else "LOW",
             "matching_sections": report.get("matching_sections", []) if report else [],
             "exact_matches_count": report.get("exact_matches_count", 0) if report else 0,
-            "ai_explanation": report.get("ai_explanation", "No similarity report found.") if report else "No similarity report found."
+            "ai_explanation": report.get("ai_explanation", "No similarity report found.") if report else "No similarity report found.",
+            "heatmap_data": report.get("heatmap_data", []) if report else []
         },
-        "versions": versions
+        "versions": versions,
+        "moderation_info": q_data
     }), 200
 
 
@@ -2251,6 +2267,121 @@ def test_db():
         "author_count": len(authors)
     })
 
+def run_ai_moderator_loop():
+    import time
+    from bson import ObjectId
+    import datetime
+    
+    # Wait for server warm up to complete
+    time.sleep(15)
+    print("AI Moderator Daemon started.")
+    
+    while True:
+        try:
+            pending_items = list(moderation_queue_collection.find({"status": "pending"}))
+            for item in pending_items:
+                book_id = item["book_id"]
+                uploader_email = item.get("uploader")
+                queue_type = item.get("queue_type")
+                
+                book = books_collection.find_one({"_id": ObjectId(book_id)})
+                if not book:
+                    moderation_queue_collection.update_one({"_id": item["_id"]}, {"$set": {"status": "skipped"}})
+                    continue
+                
+                report = plagiarism_reports_collection.find_one({"book_id": book_id})
+                similarity_score = report.get("similarity_score", 0.0) if report else 0.0
+                risk_level = report.get("risk_level", "LOW") if report else "LOW"
+                matched_title = report.get("matched_title") if report else None
+                matched_book_id = report.get("matched_book_id") if report else None
+                
+                ai_action = None
+                ai_reason = ""
+                
+                if queue_type == "plagiarism":
+                    if risk_level == "HIGH" or similarity_score > 75.0:
+                        ai_action = "reject_strike"
+                        ai_reason = f"AI Auto-Moderator: Critical similarity level of {similarity_score}% detected against '{matched_title}'. Upload rejected and copyright warning strike issued."
+                    elif risk_level == "MEDIUM" or similarity_score > 50.0:
+                        is_own_work = False
+                        if matched_book_id:
+                            matched_book = books_collection.find_one({"_id": ObjectId(matched_book_id)})
+                            if matched_book and matched_book.get("uploaded_by") == uploader_email:
+                                is_own_work = True
+                                
+                        if is_own_work:
+                            ai_action = "approve"
+                            ai_reason = f"AI Auto-Moderator: Approved. Overlap of {similarity_score}% matches the author's own registered work '{matched_title}'."
+                        else:
+                            strike_history = user_strikes_collection.find_one({"email": uploader_email})
+                            strikes_count = strike_history.get("strikes", 0) if strike_history else 0
+                            
+                            if strikes_count > 0:
+                                ai_action = "reject_strike"
+                                ai_reason = f"AI Auto-Moderator: Moderate similarity of {similarity_score}% detected. Uploader has prior copyright strikes; auto-rejected and strike issued."
+                            else:
+                                ai_action = "warn_reject"
+                                ai_reason = f"AI Auto-Moderator: Moderate similarity of {similarity_score}% detected. Rejected with warning."
+                    else:
+                        ai_action = "approve"
+                        ai_reason = "AI Auto-Moderator: Content cleared. Similarity index is within acceptable limits."
+                        
+                elif queue_type == "report":
+                    if similarity_score > 50.0:
+                        ai_action = "reject_strike"
+                        ai_reason = f"AI Auto-Moderator: Community flagged. Semantic verification confirmed matching overlap of {similarity_score}% against '{matched_title}'."
+                    else:
+                        ai_action = "approve"
+                        ai_reason = f"AI Auto-Moderator: Dismissed flags. Semantic plagiarism checks cleared with {similarity_score}% match score."
+                
+                if ai_action:
+                    print(f"[AI Moderator] Processing book {book_id} -> Action: {ai_action}")
+                    
+                    if ai_action == "approve":
+                        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
+                        chunks = list(book_chunks_collection.find({"book_id": book_id}))
+                        for c in chunks:
+                            vector_index.add_vector(c["embedding_vector"], book_id, c["chunk_number"])
+                            
+                    elif ai_action == "reject_strike":
+                        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "rejected"}})
+                        issue_user_strike(uploader_email, ai_reason)
+                        
+                    elif ai_action == "warn_reject":
+                        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "rejected"}})
+                        strike_doc = user_strikes_collection.find_one({"email": uploader_email})
+                        history = strike_doc.get("history", []) if strike_doc else []
+                        history.append({
+                            "timestamp": datetime.datetime.utcnow().isoformat(),
+                            "reason": f"Warning issued: {ai_reason}",
+                            "strike_number": len(history) + 1
+                        })
+                        user_strikes_collection.update_one(
+                            {"email": uploader_email},
+                            {"$set": {
+                                "history": history
+                            }},
+                            upsert=True
+                        )
+                    
+                    moderation_queue_collection.update_one({"_id": item["_id"]}, {"$set": {
+                        "status": "resolved",
+                        "resolved_by": "AI Moderator Bot",
+                        "resolved_at": datetime.datetime.utcnow(),
+                        "action_taken": ai_action,
+                        "resolution_reason": ai_reason
+                    }})
+                    
+        except Exception as e:
+            print("Error in AI Moderator loop:", e)
+            
+        time.sleep(10)
+
 if __name__ == "__main__":
     warm_up_vector_index()
+    
+    import threading
+    ai_mod_thread = threading.Thread(target=run_ai_moderator_loop, daemon=True)
+    ai_mod_thread.start()
+    
     app.run(host="0.0.0.0", port=5000, debug=True)

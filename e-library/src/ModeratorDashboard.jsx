@@ -15,16 +15,17 @@ const ModeratorDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [loadingCompare, setLoadingCompare] = useState(false);
   const [error, setError] = useState(null);
+  const [showResolved, setShowResolved] = useState(false);
 
   useEffect(() => {
-    fetchQueue();
-  }, []);
+    fetchQueue(showResolved);
+  }, [showResolved]);
 
-  const fetchQueue = async () => {
+  const fetchQueue = async (resolvedVal = showResolved) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get("http://localhost:5000/api/moderator/queue");
+      const res = await axios.get(`http://localhost:5000/api/moderator/queue?show_resolved=${resolvedVal}`);
       setQueue(res.data);
     } catch (err) {
       console.error("Queue fetch error:", err);
@@ -120,6 +121,22 @@ const ModeratorDashboard = () => {
         {/* LEFT COLUMN: Moderator Queue */}
         <div className="mod-sidebar-panel">
           <h3 className="panel-title">Active Moderation Queue ({queue.length})</h3>
+          <div className="toggle-resolved-container" style={{ marginBottom: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <input
+              type="checkbox"
+              id="show-resolved"
+              checked={showResolved}
+              onChange={(e) => {
+                setShowResolved(e.target.checked);
+                setSelectedItem(null);
+                setCompareData(null);
+              }}
+              style={{ cursor: "pointer" }}
+            />
+            <label htmlFor="show-resolved" style={{ color: "#5c381f", fontSize: "0.85rem", cursor: "pointer", fontWeight: "600" }}>
+              Show Resolved / AI Archive
+            </label>
+          </div>
           {error && <div className="mod-error">{error}</div>}
           
           {loading ? (
@@ -212,6 +229,44 @@ const ModeratorDashboard = () => {
                     {compareData.plagiarism_report?.ai_explanation}
                   </div>
                 </div>
+
+                {/* AI Moderator Bot Audit Log */}
+                {compareData.moderation_info && (
+                  <div className="ai-audit-log-panel" style={{
+                    padding: "16px",
+                    backgroundColor: "#f0f7f4",
+                    border: "1px solid #27ae60",
+                    borderRadius: "3px",
+                    marginBottom: "20px"
+                  }}>
+                    <h4 className="sub-title-mod" style={{ color: "#27ae60", margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: "6px", fontFamily: "Cinzel, serif", fontSize: "0.95rem" }}>
+                      🛡 AI Autonomous Moderator Action Log
+                    </h4>
+                    <p style={{ fontSize: "0.88rem", color: "#2c3e50", margin: "0 0 6px 0" }}>
+                      <strong>Processed By:</strong> {compareData.moderation_info.resolved_by || "AI Moderator Bot"}
+                    </p>
+                    <p style={{ fontSize: "0.88rem", color: "#2c3e50", margin: "0 0 6px 0" }}>
+                      <strong>Resolution Date:</strong> {new Date(compareData.moderation_info.resolved_at).toLocaleString()}
+                    </p>
+                    <p style={{ fontSize: "0.88rem", color: "#2c3e50", margin: "0 0 6px 0" }}>
+                      <strong>Action Executed:</strong> <span style={{
+                        textTransform: "uppercase",
+                        fontWeight: "bold",
+                        color: compareData.moderation_info.action_taken === "approve" ? "#27ae60" : "#c0392b"
+                      }}>{compareData.moderation_info.action_taken}</span>
+                    </p>
+                    <p style={{ fontSize: "0.88rem", color: "#2c3e50", margin: "0" }}>
+                      <strong>AI Rationale:</strong> {compareData.moderation_info.resolution_reason}
+                    </p>
+                    {compareData.moderation_info.status === "resolved" && (
+                      <div style={{ marginTop: "12px", borderTop: "1px dashed #27ae60", paddingTop: "8px" }}>
+                        <span style={{ fontSize: "0.8rem", color: "#7f8c8d", fontStyle: "italic" }}>
+                          Note: This item was auto-resolved. You can use the controls below to override the AI's action.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Similarity Heatmap Data (5x5 Chunks Matrix) */}
                 {compareData.plagiarism_report?.heatmap_data?.length > 0 && (
