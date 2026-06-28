@@ -1228,6 +1228,7 @@ def delete_book(book_id):
 
     books_collection.delete_one({"_id": ObjectId(book_id)})
     book_chunks_collection.delete_many({"book_id": book_id})
+    clear_book_render_cache(book_id)
     vector_index.rebuild_index()
     return jsonify({"message": "Book deleted successfully"}), 200
 
@@ -1309,6 +1310,7 @@ def edit_book(book_id):
         filename = secure_filename(file.filename)
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         file.save(filepath)
+        clear_book_render_cache(book_id)
 
     cover_path = book.get("cover_path")
     if cover and cover.filename:
@@ -1460,6 +1462,22 @@ def get_pdf_page_count(book_id):
         return jsonify({"error": f"Failed to get page count: {str(e)}"}), 500
 
 
+# ===== Cache Clearing Utility =====
+def clear_book_render_cache(book_id):
+    try:
+        cache_dir = os.path.join("uploads", "cache")
+        if os.path.exists(cache_dir):
+            prefix = f"page_{book_id}_"
+            for filename in os.listdir(cache_dir):
+                if filename.startswith(prefix):
+                    try:
+                        os.remove(os.path.join(cache_dir, filename))
+                    except Exception:
+                        pass
+    except Exception as e:
+        print(f"Error clearing cache for book {book_id}: {e}")
+
+
 # ===== Render PDF Page as PNG API =====
 @app.route("/api/book/render-page/<book_id>/<int:page_num>", methods=["GET"])
 def render_pdf_page(book_id, page_num):
@@ -1480,29 +1498,38 @@ def render_pdf_page(book_id, page_num):
             content = f.read()
         return jsonify({"content": content, "is_pdf": False}), 200
 
+    # Ensure cache folder exists
+    cache_dir = os.path.join("uploads", "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_filepath = os.path.join(cache_dir, f"page_{book_id}_{page_num}.png")
+
+    from flask import send_file, make_response
+    
+    # 1. Return cached file if it exists
+    if os.path.exists(cache_filepath):
+        response = make_response(send_file(cache_filepath, mimetype='image/png'))
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        return response
+
     try:
         import fitz
-        from flask import send_file
-        import io
-
         doc = fitz.open(filepath)
         if page_num < 0 or page_num >= doc.page_count:
             doc.close()
             return jsonify({"error": "Page number out of range"}), 400
             
         page = doc.load_page(page_num)
-        zoom = 2.0  # Render at high resolution for reading clarity
+        zoom = 1.75  # Balanced resolution zoom for high rendering speed and clarity
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         
-        img_data = pix.tobytes("png")
+        # Save to cache file
+        pix.save(cache_filepath, output="png")
         doc.close()
         
-        return send_file(
-            io.BytesIO(img_data),
-            mimetype='image/png',
-            as_attachment=False
-        )
+        response = make_response(send_file(cache_filepath, mimetype='image/png'))
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        return response
     except Exception as e:
         return jsonify({"error": f"Failed to render page: {str(e)}"}), 500
 
