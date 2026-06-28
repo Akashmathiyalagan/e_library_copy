@@ -1,0 +1,953 @@
+/* Book Reader Page Styles - Book Theme */
+.reader-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle, #3e1b0c 0%, #200a03 100%);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: 'Lora', serif;
+}
+
+/* Hanging Ribbon Bookmark Back Link */
+.bookmark-button {
+  position: fixed;
+  top: 0;
+  left: 60px;
+  width: 54px;
+  height: 140px;
+  background: linear-gradient(to bottom, #8c2a2a, #5c1818);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-top: none;
+  z-index: 1000;
+  cursor: pointer;
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 20px;
+  padding-bottom: 25px;
+  box-sizing: border-box;
+  /* Ribbon flag fork shape */
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 50% 88%, 0% 100%);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.bookmark-button:hover {
+  height: 160px;
+  background: linear-gradient(to bottom, #a23838, #722020);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.55);
+}
+
+.bookmark-text {
+  font-family: 'Cinzel', serif;
+  color: #ebdcb9;
+  font-size: 0.68rem;
+  font-weight: 700;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+}
+
+/* Open Book Spread Container */
+.reader-book-spread {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 96vw;
+  height: 88vh;
+  max-width: 1600px;
+  background: #fbf8f0;
+  border-radius: 12px 12px 16px 16px;
+  box-shadow: 
+    0 35px 70px rgba(0, 0, 0, 0.65), 
+    0 15px 30px rgba(0, 0, 0, 0.45);
+  border: 14px solid #5c381f; /* Wood outer frame */
+  box-sizing: border-box;
+}
+
+/* Reading Book Pages */
+.reader-page {
+  flex: 1;
+  padding: 20px 30px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  position: relative;
+  height: 100%;
+}
+
+.reader-page.left-page {
+  background: linear-gradient(to right, #fbf8f0 85%, #ebdcb9 100%);
+  border-radius: 4px 0 0 4px;
+}
+
+.reader-page.right-page {
+  background: linear-gradient(to left, #fbf8f0 85%, #ebdcb9 100%);
+  border-radius: 0 4px 4px 0;
+}
+
+.reader-page-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Spine shadow divider */
+.reader-spine {
+  width: 24px;
+  background: linear-gradient(to right, 
+    rgba(92, 56, 31, 0.25) 0%, 
+    rgba(0, 0, 0, 0.5) 45%, 
+    rgba(0, 0, 0, 0.6) 50%, 
+    rgba(0, 0, 0, 0.5) 55%, 
+    rgba(92, 56, 31, 0.25) 100%
+  );
+  box-shadow: 
+    inset 4px 0 10px rgba(0,0,0,0.3),
+    inset -4px 0 10px rgba(0,0,0,0.3);
+  height: 100%;
+  flex-shrink: 0;
+}
+
+/* Page Headers */
+.reader-book-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #2c1e15;
+  margin: 0;
+  text-align: center;
+}
+
+.reader-book-author {
+  font-size: 0.95rem;
+  color: #8c6239;
+  text-align: center;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.reader-divider {
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  color: #c59b6d;
+  letter-spacing: 4px;
+  text-align: center;
+  margin: 15px 0 25px;
+}
+
+/* Paragraph Content Scroll */
+.reader-text-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 15px;
+  margin-bottom: 20px;
+  box-sizing: border-box;
+}
+
+/* Shift right column up to align text */
+.reader-text-scroll.scroll-right {
+  margin-top: 15px;
+}
+
+.reader-text-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.reader-text-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.reader-text-scroll::-webkit-scrollbar-thumb {
+  background: rgba(92, 56, 31, 0.15);
+  border-radius: 2.5px;
+}
+
+.reader-paragraph {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #2c1e15;
+  margin: 0 0 18px 0;
+  text-align: justify;
+  text-indent: 24px;
+}
+
+/* Page numbering */
+.reader-page-number {
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  color: #8c6239;
+  text-align: center;
+  position: absolute;
+  bottom: 0px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Loading layout */
+.reader-loading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle, #3e1b0c 0%, #200a03 100%);
+  color: #ebdcb9;
+  font-family: 'Cinzel', serif;
+}
+
+.parchment-loader {
+  font-size: 1.8rem;
+  letter-spacing: 2px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.parchment-loader.error {
+  color: #a23838;
+  animation: none;
+}
+
+.reader-loading-container .back-btn {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background: #5c381f;
+  color: #f7e7ce;
+  border: 1px solid #c59b6d;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@media (max-width: 1120px) {
+  .reader-book-spread {
+    width: 95%;
+    height: 90vh;
+  }
+}
+
+/* ── Free Trial Floating Banner ────────────────────────────── */
+.trial-timer-banner {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #4a1e07, #2c1205);
+  border: 2px solid #b89047;
+  border-radius: 30px;
+  padding: 8px 24px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  font-family: 'Cinzel', serif;
+  color: #f7e7ce;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+}
+
+.timer-icon {
+  font-size: 1.1rem;
+  color: #ffd700;
+}
+
+.font-pulsing {
+  animation: pulse 1s infinite ease-in-out;
+}
+
+.timer-label {
+  opacity: 0.85;
+}
+
+.timer-countdown {
+  color: #ffd700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+}
+
+/* ── Trial Expired Screen ─────────────────────────────────── */
+.trial-expired-bg {
+  background: radial-gradient(circle, rgba(62, 27, 12, 0.95) 0%, rgba(32, 10, 3, 0.98) 100%) !important;
+}
+
+.trial-expired-card {
+  background: linear-gradient(135deg, #fbf8f0 85%, #f4eeda 100%);
+  border: 10px solid #5c381f; /* Walnut borders */
+  border-radius: 12px;
+  width: 500px;
+  max-width: 90%;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 
+    0 25px 55px rgba(0, 0, 0, 0.7),
+    inset 0 0 40px rgba(92, 56, 31, 0.08);
+  font-family: 'Lora', serif;
+  color: #2c1e15;
+  animation: fadeIn 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.expired-icon {
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 20px;
+  animation: rotateTime 4s infinite linear;
+}
+
+@keyframes rotateTime {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(180deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.trial-expired-card h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #8c2a2a;
+  margin-bottom: 15px;
+  border-bottom: 2px double #c59b6d;
+  padding-bottom: 10px;
+}
+
+.trial-expired-card p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  margin: 15px 0;
+}
+
+.trial-expired-card p.expired-sub {
+  font-size: 0.95rem;
+  color: #8c6239;
+  font-style: italic;
+}
+
+.expired-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.expired-actions button {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  padding: 12px 24px;
+  font-size: 13px;
+  color: #f7e7ce;
+  border: 1px solid #c59b6d;
+  border-radius: 4px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease-in-out;
+  flex: 1;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.expired-actions button.back-dashboard-btn {
+  background: linear-gradient(135deg, #8c2a2a, #5c1818);
+  border-color: #a25252;
+}
+
+.expired-actions button.back-dashboard-btn:hover {
+  background: linear-gradient(135deg, #a23838, #722020);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+.expired-actions button.buy-rent-btn {
+  background: linear-gradient(135deg, #5c381f, #412613);
+}
+
+.expired-actions button.buy-rent-btn:hover {
+  background: linear-gradient(135deg, #6d4226, #4d2d17);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+.expired-actions button:active {
+  transform: translateY(0);
+}
+
+/* ── PDF Page Rendering Styles ─────────────────────────────── */
+.pdf-page-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.pdf-page-img {
+  max-width: 100%;
+  max-height: calc(100% - 30px); /* Leave room for page number */
+  object-fit: contain;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+  
+  /* Blends white background of PDF pages with our parchment texture */
+  mix-blend-mode: multiply;
+  opacity: 0.94;
+  filter: contrast(1.04) sepia(0.04) brightness(1.02);
+  transition: opacity 0.3s ease;
+}
+
+.pdf-page-img.hidden {
+  opacity: 0;
+}
+
+.page-img-loader {
+  position: absolute;
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  color: #8c6239;
+  letter-spacing: 1px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.end-of-book {
+  text-align: center;
+  font-family: 'Playfair Display', serif;
+  color: #8c6239;
+}
+
+.end-ornament {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 10px;
+  color: #c59b6d;
+}
+
+/* ── Navigation Control Bar ───────────────────────────────── */
+.pdf-nav-controls {
+  position: fixed;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 25px;
+  background: linear-gradient(to bottom, #4a1e07, #2c1205);
+  border: 2px solid #b89047;
+  border-radius: 30px;
+  padding: 8px 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.pdf-page-indicator {
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f7e7ce;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  min-width: 180px;
+  text-align: center;
+}
+
+.pdf-nav-btn {
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #2c1205;
+  background: linear-gradient(135deg, #b89047, #d4af37);
+  border: 1px solid #ffd700;
+  border-radius: 20px;
+  padding: 6px 18px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.25);
+}
+
+.pdf-nav-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #d4af37, #b89047);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.35);
+}
+
+.pdf-nav-btn:disabled {
+  background: #555555;
+  color: #888888;
+  border-color: #444444;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  opacity: 0.5;
+}
+
+/* AI Hanging Ribbon Bookmark */
+.ai-bookmark {
+  left: auto !important;
+  right: 60px;
+  background: linear-gradient(to bottom, #4f3393, #2f1963);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ai-bookmark:hover {
+  background: linear-gradient(to bottom, #6343af, #3f2382);
+}
+
+/* AI Sliding Sidebar */
+.ai-analysis-sidebar {
+  position: fixed;
+  top: 0;
+  right: -360px; /* Start hidden */
+  width: 340px;
+  height: 100vh;
+  background: linear-gradient(135deg, #fbf8f0 80%, #f4eeda 100%);
+  border-left: 8px solid #3c2475; /* Purple AI spine */
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  transition: right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.ai-analysis-sidebar.open {
+  right: 0;
+}
+
+.ai-sidebar-header {
+  padding: 20px;
+  border-bottom: 2px double rgba(60, 36, 117, 0.25);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ede8dc;
+}
+
+.ai-sidebar-header h3 {
+  font-family: 'Cinzel', serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #3c2475;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.ai-sidebar-close {
+  background: transparent;
+  border: none;
+  font-size: 1.6rem;
+  color: #3c2475;
+  cursor: pointer;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.ai-sidebar-close:hover {
+  transform: scale(1.15);
+}
+
+.ai-sidebar-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-section h4 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #3c2475;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-section p {
+  font-family: 'Lora', serif;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #2c1e15;
+  margin: 0;
+}
+
+.ai-blockquote {
+  font-family: 'Lora', serif;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: #2c1e15;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  background: rgba(60, 36, 117, 0.04);
+  border-left: 3px solid #3c2475;
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+}
+
+.ai-sidebar-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 40px;
+  align-items: center;
+}
+
+.shimmer-line {
+  width: 80%;
+  height: 12px;
+  background: linear-gradient(90deg, #e4dec9 25%, #ece7d7 50%, #e4dec9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ai-sidebar-loading p {
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #3c2475;
+  margin-top: 10px;
+}
+
+.ai-empty-text {
+  font-style: italic;
+  color: #8c6239;
+  text-align: center;
+  padding-top: 40px;
+}
+
+.ai-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.ai-section-header h4 {
+  margin: 0 !important;
+}
+
+.ai-section-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  color: #3c2475;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.6;
+  padding: 0 4px;
+  transition: all 0.2s ease-in-out;
+}
+
+.ai-section-close-btn:hover {
+  opacity: 1;
+  transform: scale(1.2);
+  color: #7f56da;
+}
+
+/* ── Original/Distraction-Free Reading Layout Styles ────────────────── */
+.reader-container.original-mode-bg {
+  background: #f7f7f7 !important;
+  color: #1a1a1a !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  overflow-y: auto;
+}
+
+.mode-bookmark {
+  left: 130px !important;
+  background: linear-gradient(to bottom, #10594e, #0a3a33) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.mode-bookmark:hover {
+  background: linear-gradient(to bottom, #187a6c, #0e4c43) !important;
+}
+
+.original-reader-view {
+  width: 100%;
+  max-width: 1000px;
+  min-height: 100vh;
+  padding: 80px 24px 120px 24px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.original-reader-container {
+  width: 100%;
+  max-width: 800px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  padding: 48px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.original-book-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #111111;
+  margin: 0 0 10px 0;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.original-book-author {
+  font-family: 'Lora', serif;
+  font-size: 1.1rem;
+  color: #666666;
+  margin: 0;
+  text-align: center;
+  font-style: italic;
+}
+
+.original-divider {
+  font-size: 1.2rem;
+  color: #dddddd;
+  margin: 24px 0;
+  letter-spacing: 4px;
+}
+
+.original-content-area {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.original-text-content {
+  font-family: 'Georgia', serif;
+  font-size: 1.15rem;
+  line-height: 1.85;
+  color: #2b2b2b;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  text-align: justify;
+}
+
+.original-pdf-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.original-pdf-img {
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  transition: opacity 0.25s ease;
+}
+
+.original-pdf-img.hidden {
+  opacity: 0;
+}
+
+.original-page-loader {
+  font-family: 'Lora', serif;
+  font-size: 1.1rem;
+  color: #666666;
+  margin: 80px 0;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.original-page-number {
+  margin-top: 24px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  color: #888888;
+  letter-spacing: 1px;
+}
+
+/* ── Full Screen Mode Styling ─────────────────────────────────────── */
+.fullscreen-toggle-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10001;
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f7e7ce;
+  background: rgba(92, 56, 31, 0.85);
+  border: 1px solid #b89047;
+  border-radius: 20px;
+  padding: 8px 18px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fullscreen-toggle-btn:hover {
+  background: #5c381f;
+  border-color: #ffd700;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.fullscreen-toggle-btn:active {
+  transform: translateY(0);
+}
+
+.fullscreen-toggle-btn.active {
+  background: rgba(20, 20, 20, 0.85);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+.fullscreen-toggle-btn.active:hover {
+  background: #000000;
+}
+
+/* Fullscreen layouts adjustments */
+.full-screen-mode .reader-book-spread {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.full-screen-mode .original-reader-view {
+  padding: 40px 20px 100px 20px !important;
+  background: #ffffff !important;
+}
+
+.full-screen-mode .original-reader-container {
+  box-shadow: none !important;
+  border: none !important;
+  max-width: 900px !important;
+  padding: 10px !important;
+}
+
+.full-screen-mode .pdf-nav-controls {
+  bottom: 15px !important;
+  opacity: 0.3;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.full-screen-mode .pdf-nav-controls:hover {
+  opacity: 1;
+}
+
+/* Immersive Side Navigation Buttons & Indicators */
+.fullscreen-nav-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10002;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f7e7ce;
+  font-size: 1.2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  backdrop-filter: blur(2px);
+  opacity: 0.15; /* Substantially reduced default opacity for distraction-free reading */
+}
+
+.fullscreen-nav-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: #b89047;
+  color: #ffffff;
+  transform: translateY(-50%) scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
+  opacity: 0.95; /* Becomes clearly visible on hover */
+}
+
+.fullscreen-nav-btn:disabled {
+  opacity: 0.05;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.fullscreen-nav-btn.prev-btn {
+  left: 30px;
+}
+
+.fullscreen-nav-btn.next-btn {
+  right: 30px;
+}
+
+/* Reduced opacity for the exit fullscreen button in fullscreen mode */
+.full-screen-mode .fullscreen-toggle-btn {
+  opacity: 0.15;
+  background: rgba(20, 20, 20, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: rgba(247, 231, 206, 0.6) !important;
+}
+
+.full-screen-mode .fullscreen-toggle-btn:hover {
+  opacity: 0.95;
+  background: #000000 !important;
+  border-color: #ffd700 !important;
+  color: #ffffff !important;
+}
+
+/* Gold Ribbon Bookmark for Full Screen (Not in Full Screen mode) */
+.fullscreen-bookmark {
+  left: auto !important;
+  right: 130px !important;
+  background: linear-gradient(to bottom, #a37b34, #73541b) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.fullscreen-bookmark:hover {
+  background: linear-gradient(to bottom, #c09445, #8f6a27) !important;
+}
+
+

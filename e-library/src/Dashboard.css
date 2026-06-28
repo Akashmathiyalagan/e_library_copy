@@ -1,0 +1,538 @@
+/* Global Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Lora', serif;
+}
+
+/* Dashboard Layout */
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #fdfcf7; /* Ivory parchment background */
+    color: #2c1e15;
+}
+
+/* Navbar - Mahogany wood strip with gold lining */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 30px;
+    background: linear-gradient(to bottom, #4a1e07, #2c1205);
+    color: #f7e7ce;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 70px;
+    z-index: 1000;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    border-bottom: 3px solid #b89047; /* Gold alignment marker */
+}
+
+/* Logo brand style */
+.logo-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+}
+
+.logo-container img {
+    height: 44px;
+    width: auto;
+    border-radius: 50%;
+    border: 2px solid #b89047;
+    background-color: white;
+}
+
+.logo-text {
+    font-family: 'Cinzel', serif;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #f7e7ce;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Search bar styled like vintage catalog input */
+.search-container {
+    display: flex;
+    align-items: center;
+    background: #fffdf9;
+    border-radius: 20px;
+    padding: 2px 15px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.15);
+    flex-grow: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    border: 1px solid #c59b6d;
+}
+
+.search-bar {
+    font-family: 'Lora', serif;
+    width: 100%;
+    border: none;
+    padding: 10px;
+    border-radius: 20px;
+    outline: none;
+    font-size: 15px;
+    background: transparent;
+    color: #2c1e15;
+}
+
+.search-icon {
+    font-size: 20px;
+    color: #8c6239;
+    cursor: pointer;
+}
+
+/* Navbar Icons */
+.nav-icons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.nav-icons .icon {
+    font-size: 38px;
+    cursor: pointer;
+    color: #f7e7ce;
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.nav-icons .icon:hover {
+    background-color: rgba(184, 144, 71, 0.25);
+    color: #ffd700;
+    transform: scale(1.08);
+}
+
+/* Sidebar - Bound Leather Spine style */
+.left-sidebar {
+    width: 250px;
+    background: linear-gradient(to right, #381d0f, #230f06);
+    padding: 24px 16px;
+    border-right: 4px solid #b89047;
+    overflow-y: auto;
+    height: calc(100vh - 70px);
+    position: fixed;
+    left: 0;
+    top: 70px;
+    z-index: 99;
+    box-shadow: 5px 0 15px rgba(0,0,0,0.3);
+}
+
+.left-sidebar::-webkit-scrollbar {
+    width: 5px;
+}
+.left-sidebar::-webkit-scrollbar-thumb {
+    background: rgba(184, 144, 71, 0.4);
+    border-radius: 2.5px;
+}
+
+/* Author search inside sidebar */
+.author-search-container {
+    position: relative;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(184, 144, 71, 0.3);
+    padding-bottom: 8px;
+}
+
+.author-search-bar {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(184, 144, 71, 0.4);
+    border-radius: 4px;
+    font-size: 14px;
+    color: #f7e7ce;
+    outline: none;
+    font-family: 'Lora', serif;
+}
+
+.author-search-bar:focus {
+    border-color: #b89047;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.author-search-icon {
+    position: absolute;
+    right: 12px;
+    font-size: 16px;
+    color: #b89047;
+    cursor: pointer;
+}
+
+/* Author index card directory styling */
+.author-list h4 {
+    font-family: 'Cinzel', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #b89047;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(184, 144, 71, 0.2);
+    padding-bottom: 6px;
+}
+
+.author-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.author-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(184, 144, 71, 0.15);
+    color: #ebdcb9;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.author-list li:hover {
+    background: rgba(184, 144, 71, 0.12);
+    border-color: #b89047;
+    transform: translateX(3px);
+}
+
+.author-list li span {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Active author - Gold leaf index tab styling */
+.author-list li.active {
+    background: linear-gradient(135deg, #b89047, #d4af37);
+    color: #2c1205;
+    font-weight: 700;
+    border-color: #ffd700;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.author-list li.active:hover {
+    background: linear-gradient(135deg, #cfa253, #ebdcb9);
+}
+
+.favorite-icon {
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.2s ease;
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.favorite-icon.favorited {
+    color: #ffd700;
+}
+
+.favorite-icon:hover {
+    transform: scale(1.2);
+}
+
+.notification-dot {
+    color: #ffd700;
+    font-size: 8px;
+}
+
+/* Main Content Area - Reading desk aesthetic */
+.dashboard-content {
+    position: absolute;
+    top: 70px;
+    left: 250px;
+    width: calc(100% - 250px);
+    height: calc(100vh - 70px);
+    padding: 24px 40px 40px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: #fdfcf7;
+}
+
+.dashboard-content.full-width {
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+
+.dashboard-content::-webkit-scrollbar {
+    width: 6px;
+}
+.dashboard-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.dashboard-content::-webkit-scrollbar-thumb {
+    background: rgba(92, 56, 31, 0.15);
+    border-radius: 3px;
+}
+
+.book-section {
+    width: 100%;
+}
+
+.book-section h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.35rem;
+    color: #2c1e15;
+    font-weight: 700;
+    margin-bottom: 15px;
+    border-bottom: 2px double rgba(92, 56, 31, 0.15);
+    padding-bottom: 8px;
+}
+
+/* Bookshelves Grid */
+.book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    grid-auto-rows: 145px;
+    gap: 25px 15px;
+    width: 100%;
+    padding: 10px 10px 20px;
+    background: #fcf9f2;
+    border-radius: 8px;
+    border: 1px solid #e7dfca;
+    box-shadow: inset 0 0 30px rgba(92, 56, 31, 0.05);
+    
+    /* 3D repeating wood shelves under the cards */
+    background-image: linear-gradient(
+        to bottom,
+        transparent,
+        transparent 145px,
+        #8c6239 145px,
+        #5c4033 151px,
+        #3e2a1e 153px,
+        transparent 153px,
+        transparent 170px
+    );
+    background-size: 100% 170px;
+    background-repeat: repeat-y;
+}
+
+/* Standing Book Card */
+.book-card {
+    position: relative;
+    width: 100%;
+    max-width: 75px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    box-sizing: border-box;
+    transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    justify-self: center;
+}
+
+/* Book Cover image as realistic 3D book block */
+.book-cover {
+    width: 60px !important;
+    height: 90px !important;
+    display: block !important;
+    object-fit: cover;
+    border-radius: 3px 6px 6px 3px;
+    box-shadow: 
+      -3px 3px 6px rgba(0, 0, 0, 0.4),
+      -1px 1px 2px rgba(0, 0, 0, 0.2);
+    border-left: 2px solid rgba(0, 0, 0, 0.15); /* Crease spine */
+    position: relative;
+    z-index: 2;
+    transition: all 0.25s ease;
+}
+
+.book-card:hover {
+    transform: translateY(-8px);
+}
+
+.book-card:hover .book-cover {
+    box-shadow: 
+      -8px 12px 20px rgba(92, 56, 31, 0.5),
+      -2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Book Title below cover */
+.book-title {
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #2c1e15;
+    text-align: center;
+    font-family: 'Lora', serif;
+    width: 100%;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Author Details overlay */
+.author-details h3 {
+    font-family: 'Playfair Display', serif;
+    color: #2c1e15;
+    font-size: 2rem;
+    margin-bottom: 20px;
+}
+
+/* Filter Panel Dropdown */
+.filter-panel-dropdown {
+    position: absolute;
+    top: 70px;
+    right: 40px;
+    background: linear-gradient(135deg, #2c1e15, #1c120c);
+    border: 2px solid #b89047;
+    border-radius: 8px;
+    padding: 16px 20px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    z-index: 1001;
+    animation: filterSlideIn 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+@keyframes filterSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.filter-label {
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #b89047;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.filter-select {
+    background: #fbf8f0;
+    border: 1px solid #c59b6d;
+    border-radius: 4px;
+    color: #2c1e15;
+    font-family: 'Lora', serif;
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    min-width: 140px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.filter-select:focus {
+    border-color: #ffd700;
+}
+
+.filter-clear-btn {
+    background: linear-gradient(135deg, #8c2a2a, #5c1818);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f7e7ce;
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    align-self: flex-end;
+    margin-top: 4px;
+    transition: all 0.2s ease;
+}
+
+.filter-clear-btn:hover {
+    background: linear-gradient(135deg, #a23838, #722020);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.active-filter-icon {
+    color: #ffd700 !important;
+    transform: scale(1.1);
+}
+
+/* AI Recommendation Section */
+.ai-recommendation-section {
+    margin-bottom: 40px;
+}
+
+/* Book Lock Overlay & Price Tags */
+.book-cover-container {
+    position: relative;
+    width: 60px !important;
+    height: 90px !important;
+    border-radius: 3px 6px 6px 3px;
+}
+
+.lock-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60px !important;
+    height: 90px !important;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 3px 6px 6px 3px;
+    z-index: 3;
+    opacity: 1;
+    transition: background 0.25s ease;
+    border-left: 2px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 
+      -3px 3px 6px rgba(0, 0, 0, 0.4),
+      -1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.book-card:hover .lock-overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.lock-icon {
+    color: #ebdcb9;
+    font-size: 12px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+
+.book-price-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8c6239;
+    margin-top: 5px;
+    text-align: center;
+}
+
+.book-price-tag.owned {
+    color: #b89047;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+
