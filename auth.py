@@ -422,7 +422,42 @@ def warm_up_vector_index():
     import threading
     def perform_warmup():
         print("Warming up FAISS vector index...")
-        vector_index.rebuild_index()
+        try:
+            # Locate all books with published or auto-published status
+            published_books = list(books_collection.find({
+                "status": {"$in": ["published", "pending_review", "copyright_review"]}
+            }))
+            
+            for book in published_books:
+                book_id = str(book["_id"])
+                # Check if it has chunks cached in collection
+                count = book_chunks_collection.count_documents({"book_id": book_id})
+                if count == 0:
+                    filepath = book.get("file_path")
+                    if filepath and os.path.exists(filepath):
+                        print(f"Back-populating semantic embeddings for legacy book '{book.get('title')}'...")
+                        text = extract_book_text(filepath)
+                        if text and text.strip():
+                            chunks = split_text_into_chunks(text, chunk_size=500, overlap=100)
+                            for num, chunk_txt in enumerate(chunks):
+                                emb = embedding_manager.encode(chunk_txt).tolist()
+                                book_chunks_collection.insert_one({
+                                    "book_id": book_id,
+                                    "chunk_number": num,
+                                    "text": chunk_txt,
+                                    "embedding_vector": emb
+                                })
+                            books_collection.update_one({"_id": book["_id"]}, {"$set": {
+                                "embedding_model": "all-MiniLM-L6-v2",
+                                "embedding_generated_at": datetime.datetime.utcnow(),
+                                "chunk_count": len(chunks)
+                            }})
+            
+            # Rebuild vector index from all chunks
+            vector_index.rebuild_index()
+        except Exception as e:
+            print("Error during warmup indexing back-population:", e)
+            
     threading.Thread(target=perform_warmup, daemon=True).start()
 
 # ===== User Strike Helper =====
@@ -590,9 +625,10 @@ def run_plagiarism_scan(book_id):
                 
             report = check_plagiarism_local(text1, text2)
             
-            # Combine semantic similarity and text similarity
+            # Combine semantic similarity, text similarity, and paragraph similarity
             text_sim = report["overall_similarity"]
-            combined_similarity = max(initial_score, text_sim)
+            paragraph_sim = report["paragraph_similarity"]
+            combined_similarity = max(initial_score, text_sim, paragraph_sim)
             
             if combined_similarity > highest_similarity:
                 highest_similarity = combined_similarity
