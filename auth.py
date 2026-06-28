@@ -538,7 +538,17 @@ def run_plagiarism_scan(book_id):
                 "scanned_at": datetime.datetime.utcnow()
             })
             uploader_email = book.get("uploaded_by")
-            issue_user_strike(uploader_email, f"Attempted to upload exact duplicate of '{duplicate_book.get('title')}'")
+            details = f"File is an exact binary duplicate (SHA-256 match) of existing book '{duplicate_book.get('title')}' uploaded by another author. Upload rejected and strike issued."
+            issue_user_strike(uploader_email, details)
+            send_moderation_emails(
+                book_title=book.get("title"),
+                uploader_email=uploader_email,
+                matched_book_title=duplicate_book.get("title"),
+                matched_publisher_email=duplicate_book.get("uploaded_by"),
+                action_taken="auto_reject",
+                details=details,
+                similarity_score=100.0
+            )
             return
             
         # 2. Extract and Split text into chunks
@@ -701,6 +711,22 @@ def run_plagiarism_scan(book_id):
             print(f"Indexing published book {book_id} chunks in FAISS...")
             for num, emb in enumerate(embeddings1):
                 vector_index.add_vector(emb, book_id, num)
+                
+        # Send plagiarism scan notifications if similarity exists
+        if highest_similarity > 25.0:
+            uploader_email = book.get("uploaded_by")
+            matched_publisher_email = None
+            if highest_match_book:
+                matched_publisher_email = highest_match_book.get("uploaded_by")
+            send_moderation_emails(
+                book_title=book.get("title"),
+                uploader_email=uploader_email,
+                matched_book_title=highest_match_book.get("title") if highest_match_book else None,
+                matched_publisher_email=matched_publisher_email,
+                action_taken=status,
+                details=explanation,
+                similarity_score=round(highest_similarity, 2)
+            )
                 
     except Exception as e:
         print(f"Error in plagiarism scan thread for book {book_id}: {e}")
@@ -881,6 +907,45 @@ def send_reset_email(subject, html_body, to_email):
     except Exception as e:
         print(f"ERROR sending email to {to_email}: {e}")
         return False
+
+# ===== Send Plagiarism & Moderation Emails Helper =====
+def send_moderation_emails(book_title, uploader_email, matched_book_title=None, matched_publisher_email=None, action_taken="", details="", similarity_score=0.0):
+    # 1. Email to the uploader
+    uploader_subject = f"E-Library Upload Moderation Notice: {book_title}"
+    uploader_body = f"""
+    <div style="font-family: 'Lora', Georgia, serif; padding: 24px; background-color: #fdf9ef; color: #3e1b0c; border: 1px solid #d4c5ab; border-radius: 4px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+      <h2 style="color: #c0392b; font-family: 'Cinzel', serif; border-bottom: 2px solid rgba(162,110,50,0.2); padding-bottom: 12px; margin-top: 0; text-transform: uppercase; letter-spacing: 1px;">Moderation Action Notice</h2>
+      <p style="font-size: 15px; line-height: 1.6;">Dear Author,</p>
+      <p style="font-size: 15px; line-height: 1.6;">This is an official notice regarding your book upload: <strong style="color: #1a0e06;">{book_title}</strong>.</p>
+      <p style="font-size: 15px; line-height: 1.6;">Our copyright and plagiarism protection systems scanned the document and recorded the following resolution:</p>
+      <div style="background-color: #fff8f3; padding: 18px; border-left: 4px solid #c0392b; margin: 20px 0; border-radius: 3px; border: 1px solid rgba(192,57,43,0.15); border-left-width: 4px;">
+        <p style="margin: 0 0 8px 0; font-size: 14.5px;"><strong>Resolution Status:</strong> <span style="text-transform: uppercase; font-weight: bold; color: #c0392b;">{action_taken.replace('_', ' ')}</span></p>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #5c381f;"><strong>System/Moderator Rationale:</strong> {details}</p>
+      </div>
+      <p style="font-size: 14px; line-height: 1.6; color: #7a5028; font-style: italic;">If you believe this was in error, please contact our support team or file an override declaration.</p>
+      <p style="font-size: 12px; color: #9a7848; margin-top: 28px; border-top: 1px solid rgba(162,110,50,0.15); padding-top: 12px; text-align: center;">This is an automated system notification. Please do not reply directly to this email.</p>
+    </div>
+    """
+    send_reset_email(uploader_subject, uploader_body, uploader_email)
+    
+    # 2. Email to the original book publisher/author
+    if matched_publisher_email and matched_book_title:
+        original_subject = f"E-Library Protection Alert: Potential Copy of '{matched_book_title}' Blocked"
+        original_body = f"""
+        <div style="font-family: 'Lora', Georgia, serif; padding: 24px; background-color: #fdf9ef; color: #3e1b0c; border: 1px solid #d4c5ab; border-radius: 4px; max-width: 600px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+          <h2 style="color: #27ae60; font-family: 'Cinzel', serif; border-bottom: 2px solid rgba(162,110,50,0.2); padding-bottom: 12px; margin-top: 0; text-transform: uppercase; letter-spacing: 1px;">Copyright Protection Alert</h2>
+          <p style="font-size: 15px; line-height: 1.6;">Dear Publisher/Author,</p>
+          <p style="font-size: 15px; line-height: 1.6;">We are writing to notify you that our automated copyright and semantic detection system identified an upload attempt matching your work: <strong style="color: #1a0e06;">{matched_book_title}</strong>.</p>
+          <div style="background-color: #f3faf6; padding: 18px; border-left: 4px solid #27ae60; margin: 20px 0; border-radius: 3px; border: 1px solid rgba(39,174,96,0.15); border-left-width: 4px;">
+            <p style="margin: 0 0 8px 0; font-size: 14.5px;"><strong>Flagged Book:</strong> {book_title}</p>
+            <p style="margin: 0 0 8px 0; font-size: 14.5px;"><strong>Match Severity:</strong> {similarity_score}% similarity detected</p>
+            <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #27ae60;"><strong>Status:</strong> Flagged, withheld, and sent for copyright moderation review.</p>
+          </div>
+          <p style="font-size: 15px; line-height: 1.6;">Our platform has proactively withheld this content from public listing to ensure your creative rights remain protected. No manual action is required from you.</p>
+          <p style="font-size: 12px; color: #9a7848; margin-top: 28px; border-top: 1px solid rgba(162,110,50,0.15); padding-top: 12px; text-align: center;">Thank you for publishing with E-Library. We are committed to protecting your creative works.</p>
+        </div>
+        """
+        send_reset_email(original_subject, original_body, matched_publisher_email)
 
 # ===== Forgot Password Route =====
 @app.route("/api/forgot-password", methods=["POST"])
@@ -2206,11 +2271,33 @@ def post_moderator_action():
     elif action in ["reject", "remove"]:
         books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": action + "d"}})
         moderation_queue_collection.update_many({"book_id": book_id}, {"$set": {"status": "resolved"}})
-        
         issue_user_strike(uploader_email, f"Moderator action ({action}): {reason or 'Copyright/plagiarism violation'}")
         
     elif action == "warning":
         issue_user_strike(uploader_email, f"Moderator warning: {reason or 'Abuse report warnings issued.'}")
+        
+    # Look up matching report details to inform original author
+    report = plagiarism_reports_collection.find_one({"book_id": book_id})
+    matched_book_title = None
+    matched_publisher_email = None
+    similarity = 0.0
+    if report:
+        similarity = report.get("similarity_score", 0.0)
+        if report.get("matched_book_id"):
+            m_book = books_collection.find_one({"_id": ObjectId(report.get("matched_book_id"))})
+            if m_book:
+                matched_book_title = m_book.get("title")
+                matched_publisher_email = m_book.get("uploaded_by")
+                
+    send_moderation_emails(
+        book_title=book.get("title"),
+        uploader_email=uploader_email,
+        matched_book_title=matched_book_title,
+        matched_publisher_email=matched_publisher_email,
+        action_taken=f"manual_moderator_{action}",
+        details=f"Human Moderator Action: {action.upper()}. Rationale/Details: {reason or 'No additional comment provided.'}",
+        similarity_score=similarity
+    )
         
     return jsonify({"message": f"Moderator action '{action}' applied successfully."}), 200
 
@@ -2371,6 +2458,23 @@ def run_ai_moderator_loop():
                         "action_taken": ai_action,
                         "resolution_reason": ai_reason
                     }})
+                    
+                    # Send plagiarism emails
+                    matched_publisher_email = None
+                    if matched_book_id:
+                        matched_book = books_collection.find_one({"_id": ObjectId(matched_book_id)})
+                        if matched_book:
+                            matched_publisher_email = matched_book.get("uploaded_by")
+                            
+                    send_moderation_emails(
+                        book_title=book.get("title"),
+                        uploader_email=uploader_email,
+                        matched_book_title=matched_title,
+                        matched_publisher_email=matched_publisher_email,
+                        action_taken=f"ai_moderator_{ai_action}",
+                        details=ai_reason,
+                        similarity_score=similarity_score
+                    )
                     
         except Exception as e:
             print("Error in AI Moderator loop:", e)
