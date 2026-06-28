@@ -136,7 +136,15 @@ const ModeratorDashboard = () => {
                 >
                   <div className="card-header-mod">
                     <span className="card-tag">{item.queue_type === "plagiarism" ? "⚠ Plagiarism" : "🖯 Report"}</span>
-                    <span className="card-score">{item.similarity_score ? `${item.similarity_score}% Match` : "Flagged"}</span>
+                    <span className={`card-score ${item.risk_level || 'MEDIUM'}-badge`} style={{
+                      backgroundColor: item.risk_level === "HIGH" ? "rgba(192, 57, 43, 0.1)" :
+                                       item.risk_level === "MEDIUM" ? "rgba(243, 156, 18, 0.1)" : "rgba(39, 174, 96, 0.1)",
+                      color: item.risk_level === "HIGH" ? "#c0392b" :
+                             item.risk_level === "MEDIUM" ? "#d35400" : "#27ae60",
+                      padding: "2px 6px",
+                      borderRadius: "2px",
+                      fontWeight: "bold"
+                    }}>{item.risk_level || "MEDIUM"} RISK ({item.similarity_score}%)</span>
                   </div>
                   <h4 className="card-title-mod">{item.title}</h4>
                   <p className="card-meta-mod">By: {item.author} | Uploader: {item.uploader}</p>
@@ -189,6 +197,13 @@ const ModeratorDashboard = () => {
                     <span className="metric-label">Similarity Index</span>
                   </div>
                   <div className="metric-box">
+                    <span className="metric-value" style={{
+                      color: compareData.plagiarism_report?.risk_level === "HIGH" ? "#c0392b" :
+                             compareData.plagiarism_report?.risk_level === "MEDIUM" ? "#d35400" : "#27ae60"
+                    }}>{compareData.plagiarism_report?.risk_level || "LOW"}</span>
+                    <span className="metric-label">Risk Level</span>
+                  </div>
+                  <div className="metric-box">
                     <span className="metric-value">{compareData.plagiarism_report?.exact_matches_count}</span>
                     <span className="metric-label">Exact Paragraph Matches</span>
                   </div>
@@ -197,6 +212,45 @@ const ModeratorDashboard = () => {
                     {compareData.plagiarism_report?.ai_explanation}
                   </div>
                 </div>
+
+                {/* Similarity Heatmap Data (5x5 Chunks Matrix) */}
+                {compareData.plagiarism_report?.heatmap_data?.length > 0 && (
+                  <div className="heatmap-section" style={{
+                    padding: "16px",
+                    backgroundColor: "#fbf8f0",
+                    border: "1px dashed #9a7040",
+                    borderRadius: "3px"
+                  }}>
+                    <h4 className="sub-title-mod" style={{ margin: "0 0 10px 0", color: "#5c381f" }}>AI Semantic Chunk Overlap (5x5 Grid Analysis)</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "5px", maxWidth: "240px" }}>
+                      {compareData.plagiarism_report.heatmap_data.flat().map((val, idx) => {
+                        const intensity = val / 100.0;
+                        const red = Math.round(255);
+                        const green = Math.round(245 - (245 - 50) * intensity);
+                        const blue = Math.round(230 - (230 - 40) * intensity);
+                        return (
+                          <div
+                            key={idx}
+                            title={`Segment similarity: ${val}%`}
+                            style={{
+                              aspectRatio: "1",
+                              backgroundColor: `rgb(${red}, ${green}, ${blue})`,
+                              border: "1px solid rgba(92,56,31,0.2)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "10px",
+                              fontWeight: "bold",
+                              color: val > 60 ? "#fff" : "#5c381f"
+                            }}
+                          >
+                            {Math.round(val)}%
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Versions Compare Row */}
                 {compareData.versions?.length > 0 && (

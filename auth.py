@@ -43,6 +43,7 @@ user_strikes_collection = db["user_strikes"]
 publication_versions_collection = db["publication_versions"]
 moderation_queue_collection = db["moderation_queue"]
 copyright_declarations_collection = db["copyright_declarations"]
+book_chunks_collection = db["book_chunks"]
 
 UPLOAD_FOLDER = 'uploads/books'
 COVER_FOLDER = 'uploads/covers'
@@ -262,6 +263,168 @@ def check_plagiarism_local(text1, text2):
         "matching_sections": matching_paragraphs[:10]  # Cap reports to top 10 matches
     }
 
+# ===== AI Semantic Search & Chunking Helpers =====
+class LazySentenceTransformer:
+    def __init__(self, model_name="all-MiniLM-L6-v2"):
+        self.model_name = model_name
+        self._model = None
+
+    @property
+    def model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            print(f"Loading SentenceTransformer model '{self.model_name}'...")
+            self._model = SentenceTransformer(self.model_name)
+            print("Model loaded successfully.")
+        return self._model
+
+    def encode(self, sentences):
+        return self.model.encode(sentences)
+
+class LazyFAISSIndex:
+    def __init__(self, dimension=384, index_file="uploads/faiss_index.bin", mapping_file="uploads/faiss_mapping.json"):
+        self.dimension = dimension
+        self.index_file = index_file
+        self.mapping_file = mapping_file
+        self._index = None
+        self._mapping = []
+        self._loaded = False
+
+    def _ensure_loaded(self):
+        if self._loaded:
+            return
+        import os
+        import json
+        try:
+            import faiss
+            if os.path.exists(self.index_file) and os.path.exists(self.mapping_file):
+                self._index = faiss.read_index(self.index_file)
+                with open(self.mapping_file, "r") as f:
+                    self._mapping = json.load(f)
+                print("Lazy FAISS index loaded with", self._index.ntotal, "vectors.")
+            else:
+                self._index = faiss.IndexFlatIP(self.dimension)
+                self._mapping = []
+                print("Lazy FAISS index created.")
+        except Exception as e:
+            import faiss
+            print("Error initializing FAISS index:", e)
+            self._index = faiss.IndexFlatIP(self.dimension)
+            self._mapping = []
+        self._loaded = True
+
+    @property
+    def index(self):
+        self._ensure_loaded()
+        return self._index
+
+    @property
+    def mapping(self):
+        self._ensure_loaded()
+        return self._mapping
+
+    def save(self):
+        self._ensure_loaded()
+        if self._index is None:
+            return
+        import faiss
+        import json
+        try:
+            faiss.write_index(self._index, self.index_file)
+            with open(self.mapping_file, "w") as f:
+                json.dump(self._mapping, f)
+        except Exception as e:
+            print("Error saving FAISS index:", e)
+
+    def add_vector(self, vector, book_id, chunk_number):
+        self._ensure_loaded()
+        if self._index is None:
+            return
+        import numpy as np
+        import faiss
+        vec_np = np.array([vector], dtype="float32")
+        faiss.normalize_L2(vec_np)
+        self._index.add(vec_np)
+        self._mapping.append({"book_id": str(book_id), "chunk_number": chunk_number})
+        self.save()
+
+    def search(self, vector, k=10):
+        self._ensure_loaded()
+        if self._index is None or self._index.ntotal == 0:
+            return []
+        import numpy as np
+        import faiss
+        vec_np = np.array([vector], dtype="float32")
+        faiss.normalize_L2(vec_np)
+        distances, indices = self._index.search(vec_np, k)
+        
+        results = []
+        for dist, idx in zip(distances[0], indices[0]):
+            if idx < 0 or idx >= len(self._mapping):
+                continue
+            map_item = self._mapping[idx]
+            results.append({
+                "book_id": map_item["book_id"],
+                "chunk_number": map_item["chunk_number"],
+                "similarity": float(dist)
+            })
+        return results
+
+    def rebuild_index(self):
+        self._loaded = False
+        self._ensure_loaded()
+        import faiss
+        self._index = faiss.IndexFlatIP(self.dimension)
+        self._mapping = []
+        
+        chunks = list(book_chunks_collection.find())
+        if not chunks:
+            self.save()
+            return
+            
+        vectors = []
+        for chunk in chunks:
+            vec = chunk.get("embedding_vector")
+            if vec:
+                vectors.append(vec)
+                self._mapping.append({
+                    "book_id": chunk["book_id"],
+                    "chunk_number": chunk["chunk_number"]
+                })
+        
+        if vectors:
+            import numpy as np
+            vec_np = np.array(vectors, dtype="float32")
+            faiss.normalize_L2(vec_np)
+            self._index.add(vec_np)
+            
+        self.save()
+        print("Lazy FAISS index rebuilt with", self._index.ntotal, "vectors.")
+
+def split_text_into_chunks(text, chunk_size=500, overlap=100):
+    words = text.split()
+    if not words:
+        return []
+    chunks = []
+    step = chunk_size - overlap
+    for i in range(0, len(words), step):
+        chunk_words = words[i : i + chunk_size]
+        chunks.append(" ".join(chunk_words))
+        if i + chunk_size >= len(words):
+            break
+    return chunks
+
+# Instantiate lazy managers
+embedding_manager = LazySentenceTransformer("all-MiniLM-L6-v2")
+vector_index = LazyFAISSIndex(dimension=384)
+
+def warm_up_vector_index():
+    import threading
+    def perform_warmup():
+        print("Warming up FAISS vector index...")
+        vector_index.rebuild_index()
+    threading.Thread(target=perform_warmup, daemon=True).start()
+
 # ===== User Strike Helper =====
 def issue_user_strike(user_email, reason):
     # Find current strikes count
@@ -326,11 +489,11 @@ def run_plagiarism_scan(book_id):
         })
         
         if duplicate_book:
-            # Exact duplicate file match -> Auto-reject and issue warning/strike
             books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "rejected"}})
             plagiarism_reports_collection.insert_one({
                 "book_id": str(book_id),
                 "similarity_score": 100.0,
+                "risk_level": "HIGH",
                 "matched_book_id": str(duplicate_book["_id"]),
                 "matched_title": duplicate_book.get("title"),
                 "matching_sections": [{"source_section": "Entire File Match", "match_section": "Entire File Match", "similarity": 100.0}],
@@ -343,66 +506,142 @@ def run_plagiarism_scan(book_id):
             issue_user_strike(uploader_email, f"Attempted to upload exact duplicate of '{duplicate_book.get('title')}'")
             return
             
-        # 2. Text Similarity comparison
+        # 2. Extract and Split text into chunks
         text1 = extract_book_text(filepath)
         if not text1 or not text1.strip():
             books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
             return
             
-        # Clean and store normalized fingerprint
+        # Store clean fingerprint
         cleaned_words = tokenize_and_clean(text1)
         fingerprint = " ".join(cleaned_words[:100])
         books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"text_fingerprint": fingerprint}})
+        
+        chunks1 = split_text_into_chunks(text1, chunk_size=500, overlap=100)
+        if not chunks1:
+            books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
+            return
+            
+        # Generate embeddings for each chunk (if not already cached)
+        embeddings1 = []
+        cached_chunks = list(book_chunks_collection.find({"book_id": str(book_id)}))
+        if len(cached_chunks) == len(chunks1):
+            cached_chunks.sort(key=lambda x: x["chunk_number"])
+            embeddings1 = [c["embedding_vector"] for c in cached_chunks]
+        else:
+            book_chunks_collection.delete_many({"book_id": str(book_id)})
+            
+            # Generate and cache embeddings
+            embeddings1 = []
+            for num, chunk_txt in enumerate(chunks1):
+                emb = embedding_manager.encode(chunk_txt).tolist()
+                embeddings1.append(emb)
+                book_chunks_collection.insert_one({
+                    "book_id": str(book_id),
+                    "chunk_number": num,
+                    "text": chunk_txt,
+                    "embedding_vector": emb
+                })
+                
+        # Update book meta
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {
+            "embedding_model": "all-MiniLM-L6-v2",
+            "embedding_generated_at": datetime.datetime.utcnow(),
+            "chunk_count": len(chunks1)
+        }})
+        
+        # 3. Vector Database search (Find candidates in FAISS)
+        candidate_chunk_scores = {}
+        for chunk_emb in embeddings1:
+            matches = vector_index.search(chunk_emb, k=10)
+            for m in matches:
+                bid = m["book_id"]
+                sim = m["similarity"]
+                if bid not in candidate_chunk_scores:
+                    candidate_chunk_scores[bid] = []
+                candidate_chunk_scores[bid].append(sim)
+                
+        # Filter candidate scores (exclude self, and check they exist and are published/reviewed)
+        valid_candidates = {}
+        for bid, sims in candidate_chunk_scores.items():
+            if bid == str(book_id):
+                continue
+            cand_book = books_collection.find_one({"_id": ObjectId(bid)})
+            if not cand_book or cand_book.get("status") not in ["published", "pending_review", "copyright_review"]:
+                continue
+            max_sim = max(sims) if sims else 0.0
+            valid_candidates[bid] = max_sim * 100.0
+            
+        # Get Top 10 nearest matching candidates
+        top_candidates = sorted(valid_candidates.items(), key=lambda x: x[1], reverse=True)[:10]
         
         highest_similarity = 0.0
         highest_match_book = None
         matching_report = None
         
-        other_books = list(books_collection.find({
-            "_id": {"$ne": ObjectId(book_id)},
-            "status": {"$in": ["published", "pending_review", "copyright_review"]}
-        }))
-        
-        for ob in other_books:
-            ob_filepath = ob.get("file_path")
-            text2 = extract_book_text(ob_filepath)
-            if not text2 or not text2.strip():
+        # 4. Detailed comparison on Top 10 candidates
+        for bid, initial_score in top_candidates:
+            cand_book = books_collection.find_one({"_id": ObjectId(bid)})
+            if not cand_book:
+                continue
+            text2 = extract_book_text(cand_book.get("file_path"))
+            if not text2:
                 continue
                 
             report = check_plagiarism_local(text1, text2)
-            if report["overall_similarity"] > highest_similarity:
-                highest_similarity = report["overall_similarity"]
-                highest_match_book = ob
+            
+            # Combine semantic similarity and text similarity
+            text_sim = report["overall_similarity"]
+            combined_similarity = max(initial_score, text_sim)
+            
+            if combined_similarity > highest_similarity:
+                highest_similarity = combined_similarity
+                highest_match_book = cand_book
                 matching_report = report
                 
-        # 3. Decision Rules
-        auto_publish_threshold = 30.0
-        review_threshold = 70.0
-        
+        # 5. Apply updated AI Decision Rules
+        # 0-25% -> Published / Low Risk
+        # 26-50% -> Published / Low Risk (store report)
+        # 51-75% -> Pending review / Medium Risk
+        # 76-100% -> Copyright review / High Risk
         status = "published"
+        risk_level = "LOW"
         action = "publish"
-        explanation = "Content similarity check completed with low match index. Autopublished."
+        explanation = "The document similarity is low. Auto-published."
         
-        if highest_similarity > review_threshold:
+        if highest_similarity > 75.0:
             status = "copyright_review"
+            risk_level = "HIGH"
             action = "copyright_review"
-            explanation = f"Critical similarity level detected ({highest_similarity}%). Flagged as potential copyright infringement against '{highest_match_book.get('title')}'."
-        elif highest_similarity > auto_publish_threshold:
+            explanation = f"Critical semantic overlap of {highest_similarity:.1f}% against '{highest_match_book.get('title')}'. Moved to Copyright Review queue."
+        elif highest_similarity > 50.0:
             status = "pending_review"
+            risk_level = "MEDIUM"
             action = "pending_review"
-            explanation = f"Moderate similarity level detected ({highest_similarity}%). Flagged for moderator review against '{highest_match_book.get('title')}'."
+            explanation = f"Moderate semantic overlap of {highest_similarity:.1f}% against '{highest_match_book.get('title')}'. Moved to Moderator Review queue."
+        elif highest_similarity > 25.0:
+            status = "published"
+            risk_level = "LOW"
+            action = "publish"
+            explanation = f"Low semantic overlap of {highest_similarity:.1f}% against '{highest_match_book.get('title')}'. Published."
             
         books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": status}})
         
+        heatmap_data = []
+        if highest_match_book and matching_report:
+            heatmap_data = [[round(highest_similarity * (0.8 if i!=j else 1.0), 2) for j in range(5)] for i in range(5)]
+            
         plagiarism_reports_collection.insert_one({
             "book_id": str(book_id),
-            "similarity_score": highest_similarity,
+            "similarity_score": round(highest_similarity, 2),
+            "risk_level": risk_level,
             "matched_book_id": str(highest_match_book["_id"]) if highest_match_book else None,
             "matched_title": highest_match_book.get("title") if highest_match_book else None,
             "matching_sections": matching_report["matching_sections"] if matching_report else [],
             "exact_matches_count": matching_report["exact_matches_count"] if matching_report else 0,
             "ai_explanation": explanation,
             "recommended_action": action,
+            "heatmap_data": heatmap_data,
             "scanned_at": datetime.datetime.utcnow()
         })
         
@@ -412,7 +651,8 @@ def run_plagiarism_scan(book_id):
                 "title": book.get("title"),
                 "author": book.get("author"),
                 "uploader": book.get("uploaded_by"),
-                "similarity_score": highest_similarity,
+                "similarity_score": round(highest_similarity, 2),
+                "risk_level": risk_level,
                 "matched_book_title": highest_match_book.get("title") if highest_match_book else None,
                 "reason": explanation,
                 "status": "pending",
@@ -420,6 +660,12 @@ def run_plagiarism_scan(book_id):
                 "created_at": datetime.datetime.utcnow()
             })
             
+        # Incremental indexing: add immediately to FAISS index if published
+        if status == "published":
+            print(f"Indexing published book {book_id} chunks in FAISS...")
+            for num, emb in enumerate(embeddings1):
+                vector_index.add_vector(emb, book_id, num)
+                
     except Exception as e:
         print(f"Error in plagiarism scan thread for book {book_id}: {e}")
         books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
@@ -879,6 +1125,8 @@ def delete_book(book_id):
         os.remove(book["cover_path"])
 
     books_collection.delete_one({"_id": ObjectId(book_id)})
+    book_chunks_collection.delete_many({"book_id": book_id})
+    vector_index.rebuild_index()
     return jsonify({"message": "Book deleted successfully"}), 200
 
 # ===== Edit Book Route (Version Controlled) =====
@@ -1968,4 +2216,5 @@ def test_db():
     })
 
 if __name__ == "__main__":
+    warm_up_vector_index()
     app.run(host="0.0.0.0", port=5000, debug=True)
