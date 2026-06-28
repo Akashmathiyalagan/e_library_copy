@@ -1,0 +1,299 @@
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import logo from "./assets/logo.png";
+import "./ModeratorDashboard.css";
+
+const ModeratorDashboard = () => {
+  const navigate = useNavigate();
+  const [queue, setQueue] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [compareData, setCompareData] = useState(null);
+  const [strikeDetails, setStrikeDetails] = useState(null);
+  const [strikeEmail, setStrikeEmail] = useState("");
+  const [comments, setComments] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loadingCompare, setLoadingCompare] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchQueue();
+  }, []);
+
+  const fetchQueue = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await axios.get("http://localhost:5000/api/moderator/queue");
+      setQueue(res.data);
+    } catch (err) {
+      console.error("Queue fetch error:", err);
+      setError("Failed to fetch moderation queue.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectItem = async (item) => {
+    setSelectedItem(item);
+    setCompareData(null);
+    setStrikeDetails(null);
+    setLoadingCompare(true);
+    setComments("");
+
+    try {
+      const compareRes = await axios.get(`http://localhost:5000/api/moderator/compare/${item.book_id}`);
+      setCompareData(compareRes.data);
+      
+      if (item.uploader) {
+        setStrikeEmail(item.uploader);
+        fetchStrikes(item.uploader);
+      }
+    } catch (err) {
+      console.error("Comparison fetch error:", err);
+    } finally {
+      setLoadingCompare(false);
+    }
+  };
+
+  const fetchStrikes = async (email) => {
+    try {
+      const res = await axios.get(`http://localhost:5000/api/moderator/strikes/${email}`);
+      setStrikeDetails(res.data);
+    } catch (err) {
+      console.error("Strikes fetch error:", err);
+    }
+  };
+
+  const handleAction = async (action) => {
+    if (!selectedItem) return;
+    setLoading(true);
+    try {
+      await axios.post("http://localhost:5000/api/moderator/action", {
+        bookId: selectedItem.book_id,
+        action,
+        reason: comments
+      });
+      alert(`Moderator action '${action}' recorded.`);
+      setSelectedItem(null);
+      setCompareData(null);
+      setStrikeDetails(null);
+      fetchQueue();
+    } catch (err) {
+      console.error("Error processing moderator action:", err);
+      alert("Failed to process moderator action.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStrikeOverride = async (action) => {
+    if (!strikeEmail) return;
+    try {
+      const res = await axios.post("http://localhost:5000/api/moderator/strikes/override", {
+        email: strikeEmail,
+        action
+      });
+      alert(res.data.message);
+      fetchStrikes(strikeEmail);
+    } catch (err) {
+      console.error("Error overriding strikes:", err);
+      alert("Failed to override strikes.");
+    }
+  };
+
+  return (
+    <div className="moderator-dashboard-wrapper">
+      <nav className="mod-nav">
+        <div className="logo-container" onClick={() => navigate("/")}>
+          <img src={logo} alt="Logo" className="logo-img" />
+          <span className="logo-text">E-LIBRARY</span>
+          <span className="badge-mod">MODERATION PANEL</span>
+        </div>
+        <div className="nav-buttons">
+          <button className="mod-btn" onClick={() => navigate("/PublisherDashboard")}>Author Hub</button>
+          <button className="mod-btn" onClick={() => navigate("/")}>Reader Catalog</button>
+        </div>
+      </nav>
+
+      <div className="mod-grid">
+        {/* LEFT COLUMN: Moderator Queue */}
+        <div className="mod-sidebar-panel">
+          <h3 className="panel-title">Active Moderation Queue ({queue.length})</h3>
+          {error && <div className="mod-error">{error}</div>}
+          
+          {loading ? (
+            <div className="mod-loading">Loading queue...</div>
+          ) : queue.length === 0 ? (
+            <div className="mod-empty">No pending issues in queue. System safe!</div>
+          ) : (
+            <div className="queue-list">
+              {queue.map((item) => (
+                <div
+                  key={item._id}
+                  className={`queue-card ${selectedItem?.book_id === item.book_id ? "selected" : ""} type-${item.queue_type}`}
+                  onClick={() => handleSelectItem(item)}
+                >
+                  <div className="card-header-mod">
+                    <span className="card-tag">{item.queue_type === "plagiarism" ? "⚠ Plagiarism" : "🖯 Report"}</span>
+                    <span className="card-score">{item.similarity_score ? `${item.similarity_score}% Match` : "Flagged"}</span>
+                  </div>
+                  <h4 className="card-title-mod">{item.title}</h4>
+                  <p className="card-meta-mod">By: {item.author} | Uploader: {item.uploader}</p>
+                  <p className="card-reason-mod">{item.reason?.substring(0, 75)}...</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Quick Strike Search / Override Utility */}
+          <div className="strike-utility-box">
+            <h4 className="box-title">Lookup & Override Strikes</h4>
+            <div className="search-row-mod">
+              <input
+                type="text"
+                placeholder="Author email..."
+                value={strikeEmail}
+                onChange={(e) => setStrikeEmail(e.target.value)}
+              />
+              <button onClick={() => fetchStrikes(strikeEmail)}>Search</button>
+            </div>
+            {strikeDetails && (
+              <div className="strike-mini-profile">
+                <p>Status: <strong className={strikeDetails.status}>{strikeDetails.status || "Active"}</strong></p>
+                <p>Active Strikes: <strong className="strike-count">{strikeDetails.strikes || 0}</strong></p>
+                <div className="strike-actions-row">
+                  <button onClick={() => handleStrikeOverride("reset")}>Reset Strikes</button>
+                  <button className="suspend-btn" onClick={() => handleStrikeOverride("suspend")}>Suspend</button>
+                  <button className="restore-btn" onClick={() => handleStrikeOverride("unsuspend")}>Restore</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Comparison & Controls */}
+        <div className="mod-main-panel">
+          {selectedItem ? (
+            compareData ? (
+              <div className="compare-details">
+                <div className="compare-header">
+                  <h2>Reviewing: {compareData.book?.title}</h2>
+                  <p>Uploaded by: <strong>{compareData.book?.uploaded_by}</strong></p>
+                </div>
+
+                {/* Similarity Summary Box */}
+                <div className="similarity-summary-panel">
+                  <div className="metric-box">
+                    <span className="metric-value">{compareData.plagiarism_report?.similarity_score}%</span>
+                    <span className="metric-label">Similarity Index</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-value">{compareData.plagiarism_report?.exact_matches_count}</span>
+                    <span className="metric-label">Exact Paragraph Matches</span>
+                  </div>
+                  <div className="explanation-text">
+                    <strong>System Evaluation: </strong> 
+                    {compareData.plagiarism_report?.ai_explanation}
+                  </div>
+                </div>
+
+                {/* Versions Compare Row */}
+                {compareData.versions?.length > 0 && (
+                  <div className="version-history-compare">
+                    <h4 className="sub-title-mod">Archive Version History ({compareData.versions.length})</h4>
+                    <div className="version-list-inline">
+                      {compareData.versions.map((ver, idx) => (
+                        <div key={idx} className="version-bubble">
+                          V{ver.version_number} - {ver.updated_at.split("T")[0]}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Side by Side Text Samples */}
+                <div className="comparison-views">
+                  <div className="view-pane current-book">
+                    <div className="pane-header-mod">
+                      <h4>Current Submission Text Sample</h4>
+                      <span className="badge-pane font-classic">Source Upload</span>
+                    </div>
+                    <div className="pane-content-mod">
+                      {compareData.book?.text_sample ? compareData.book.text_sample : "Binary or empty document text."}
+                    </div>
+                  </div>
+
+                  <div className="view-pane matched-book">
+                    <div className="pane-header-mod">
+                      <h4>Existing Matching Catalog Text Sample</h4>
+                      <span className="badge-pane font-matched">Matched Archive ({compareData.matched_book?.title || "N/A"})</span>
+                    </div>
+                    <div className="pane-content-mod">
+                      {compareData.matched_book?.text_sample ? compareData.matched_book.text_sample : "No matching catalog document found or compared."}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Matching Paragraphs Level Detail */}
+                {compareData.plagiarism_report?.matching_sections?.length > 0 && (
+                  <div className="matching-sections-panel">
+                    <h4 className="sub-title-mod">Matching Paragraph Alignments</h4>
+                    <div className="sections-list">
+                      {compareData.plagiarism_report.matching_sections.map((section, idx) => (
+                        <div key={idx} className="match-section-card">
+                          <div className="match-card-meta">
+                            <span className="match-tag-pill">Match {idx + 1}</span>
+                            <span className="match-score-pill">{section.similarity}% Cosine Overlap</span>
+                          </div>
+                          <div className="match-comparison-texts">
+                            <div className="source-sec">
+                              <h5>Submitted Text:</h5>
+                              <p>"{section.source_section}"</p>
+                            </div>
+                            <div className="matched-sec">
+                              <h5>Archive Match:</h5>
+                              <p>"{section.match_section}"</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resolution Controls */}
+                <div className="moderator-resolution-controls">
+                  <h3>Record Resolution Decision</h3>
+                  <textarea
+                    rows={3}
+                    placeholder="Enter reason for decision (notified to author & logged in strikes)..."
+                    value={comments}
+                    onChange={(e) => setComments(e.target.value)}
+                  />
+                  <div className="resolution-buttons">
+                    <button className="approve-res-btn" onClick={() => handleAction("approve")}>Approve & Publish</button>
+                    <button className="warn-res-btn" onClick={() => handleAction("warning")}>Issue Warning Only</button>
+                    <button className="reject-res-btn" onClick={() => handleAction("reject")}>Reject & Strike Account</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mod-loading-compare">
+                {loadingCompare ? "Extracting documents and compiling metrics..." : "Select an issue from the queue to start comparison."}
+              </div>
+            )
+          ) : (
+            <div className="mod-intro">
+              <span className="intro-icon">🛡</span>
+              <h2>E-Library Integrity System</h2>
+              <p>Select a pending copyright or plagiarism flag from the queue sidebar. You can review similarity scores, analyze paragraphs side-by-side, inspect revision histories, and apply strike warnings.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ModeratorDashboard;

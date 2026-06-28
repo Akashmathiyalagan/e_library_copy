@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import "./UploadBook.css";
+import { useNavigate, useParams } from "react-router-dom";
+import "./UploadBook.css"; // Reuse the beautiful publish scroll styles
 
 const GENRES = [
   "Fiction", "Non-Fiction", "Mystery & Thriller", "Science Fiction",
@@ -18,7 +18,8 @@ const LANGUAGES = [
   "Italian", "Korean", "Malayalam", "Telugu", "Kannada",
 ];
 
-const UploadBooks = () => {
+const EditBook = () => {
+  const { bookId } = useParams();
   const navigate = useNavigate();
 
   // ── Core Info ──────────────────────────────────────────────
@@ -49,16 +50,44 @@ const UploadBooks = () => {
   const [cover, setCover]           = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
 
+  // ── Copyright Declaration & Allowed Names ──────────────────
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
+  const [allowedAuthors, setAllowedAuthors] = useState([]);
+
   // ── Status ─────────────────────────────────────────────────
   const [error, setError]           = useState(null);
   const [loading, setLoading]       = useState(false);
   const [activeSection, setActiveSection] = useState(0);
 
-  // ── Copyright Declaration & Allowed Names ──────────────────
-  const [declarationAccepted, setDeclarationAccepted] = useState(false);
-  const [allowedAuthors, setAllowedAuthors] = useState([]);
+  useEffect(() => {
+    const fetchBookDetails = async () => {
+      try {
+        const response = await axios.get(`http://localhost:5000/api/book/${bookId}`);
+        const b = response.data;
+        setTitle(b.title || "");
+        setAuthor(b.author || "");
+        setDescription(b.description || "");
+        setGenre(b.genre || "");
+        setLanguage(b.language || "English");
+        setTags(Array.isArray(b.tags) ? b.tags.join(", ") : b.tags || "");
+        setPublisher(b.publisher || "");
+        setIsbn(b.isbn || "");
+        setEdition(b.edition || "");
+        setPubYear(b.pub_year || "");
+        setPages(b.pages || "");
+        setPrice(b.price || "");
+        setRentPrice(b.rent_price || "");
+        setIsFree(b.is_free === true || b.is_free === "true");
+        setTrialDuration(b.trial_duration || "10");
+        if (b.cover_url) {
+          setCoverPreview(b.cover_url);
+        }
+      } catch (err) {
+        console.error("Error fetching book details:", err);
+        setError("Failed to load book data. Please check connection.");
+      }
+    };
 
-  React.useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("authorToken");
       if (!token) return;
@@ -71,17 +100,15 @@ const UploadBooks = () => {
         if (profile.name) names.push(profile.name);
         if (profile.penName) names.push(profile.penName);
         setAllowedAuthors(names);
-        if (names.length > 0) {
-          setAuthor(names[0]);
-        }
       } catch (err) {
         console.error("Error loading profile:", err);
       }
     };
-    fetchProfile();
-  }, []);
 
-  // ── Handlers ───────────────────────────────────────────────
+    fetchBookDetails();
+    fetchProfile();
+  }, [bookId]);
+
   const handleCoverChange = (e) => {
     const f = e.target.files[0];
     setCover(f);
@@ -94,14 +121,14 @@ const UploadBooks = () => {
     setLoading(true);
 
     if (!declarationAccepted) {
-      setError("You must accept the Copyright Declaration before publishing.");
+      setError("You must read and accept the Copyright Declaration to submit revisions.");
       setLoading(false);
       return;
     }
 
     const token = localStorage.getItem("authorToken");
     if (!token) {
-      setError("You must be logged in to upload a book.");
+      setError("Unauthorized. Please log in as an author.");
       setLoading(false);
       return;
     }
@@ -123,32 +150,32 @@ const UploadBooks = () => {
     formData.append("is_free",        isFree ? "true" : "false");
     formData.append("trial_duration", trialDuration || "10");
     formData.append("declaration_accepted", "true");
-    formData.append("file",           file);
+    
+    if (file) formData.append("file", file);
     if (cover) formData.append("cover", cover);
 
     try {
-      const response = await axios.post("http://localhost:5000/upload_book", formData, {
+      const response = await axios.post(`http://localhost:5000/api/books/edit/${bookId}`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`,
         },
       });
-      alert(response.data.message);
+      alert(response.data.message || "Revision saved successfully!");
       navigate("/PublisherDashboard");
     } catch (err) {
       if (err.response?.status === 401) {
-        setError("Unauthorized: Please log in again.");
+        setError("Session expired. Please log in again.");
         localStorage.removeItem("authorToken");
         navigate("/AuthorLogin");
       } else {
-        setError(err.response?.data?.error || "Upload failed. Please try again.");
+        setError(err.response?.data?.error || "Save failed. Check parameters.");
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Multi-step sections ─────────────────────────────────────
   const sections = ["Core Info", "Classification", "Publication", "Pricing & Files"];
 
   return (
@@ -170,9 +197,8 @@ const UploadBooks = () => {
               </div>
             )}
           </div>
-          <p className="cover-hint">Upload a cover image to see preview</p>
+          <p className="cover-hint">Upload new cover to replace current</p>
 
-          {/* Progress indicator */}
           <div className="upload-progress-steps">
             {sections.map((s, i) => (
               <div
@@ -190,15 +216,15 @@ const UploadBooks = () => {
         {/* ── Right: Form ───────────────────────────────── */}
         <div className="scroll-paper">
           <div className="scroll-title-wrap">
-            <h2 className="scroll-title">Publish a New Book</h2>
-            <p className="scroll-subtitle">Fill in all essential details about your book</p>
+            <h2 className="scroll-title">Edit Book Revisions</h2>
+            <p className="scroll-subtitle">Modify parameters and review version declarations</p>
           </div>
 
           {error && <div className="error-message">⚠ {error}</div>}
 
           <form onSubmit={handleSubmit}>
 
-            {/* ════ SECTION 1: Core Info ════ */}
+            {/* SECTION 1: Core Info */}
             <div className="form-section">
               <div className="section-header" onClick={() => setActiveSection(0)}>
                 <span className="section-number">1</span>
@@ -213,7 +239,6 @@ const UploadBooks = () => {
                     <input
                       type="text"
                       className="field-input"
-                      placeholder="e.g. The Great Gatsby"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       required
@@ -237,7 +262,6 @@ const UploadBooks = () => {
                       <input
                         type="text"
                         className="field-input"
-                        placeholder="e.g. F. Scott Fitzgerald"
                         value={author}
                         onChange={(e) => setAuthor(e.target.value)}
                         required
@@ -246,24 +270,20 @@ const UploadBooks = () => {
                   </div>
 
                   <div className="field-group">
-                    <label className="field-label required">Description / Synopsis</label>
+                    <label className="field-label required">Description</label>
                     <textarea
-                      className="field-input field-textarea"
-                      placeholder="Write a compelling description of your book..."
+                      className="field-textarea"
+                      rows={5}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       required
                     />
                   </div>
-
-                  <button type="button" className="next-btn" onClick={() => setActiveSection(1)}>
-                    Next: Classification →
-                  </button>
                 </div>
               )}
             </div>
 
-            {/* ════ SECTION 2: Classification ════ */}
+            {/* SECTION 2: Classification */}
             <div className="form-section">
               <div className="section-header" onClick={() => setActiveSection(1)}>
                 <span className="section-number">2</span>
@@ -273,54 +293,50 @@ const UploadBooks = () => {
 
               {activeSection === 1 && (
                 <div className="section-body">
-                  <div className="field-row">
-                    <div className="field-group">
-                      <label className="field-label required">Genre / Category</label>
-                      <select
-                        className="field-input field-select"
-                        value={genre}
-                        onChange={(e) => setGenre(e.target.value)}
-                        required
-                      >
-                        <option value="">— Select Genre —</option>
-                        {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                    </div>
-
-                    <div className="field-group">
-                      <label className="field-label required">Language</label>
-                      <select
-                        className="field-input field-select"
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                        required
-                      >
-                        {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-                      </select>
-                    </div>
+                  <div className="field-group">
+                    <label className="field-label required">Genre</label>
+                    <select
+                      className="field-select"
+                      value={genre}
+                      onChange={(e) => setGenre(e.target.value)}
+                      required
+                    >
+                      <option value="">Select a Genre</option>
+                      {GENRES.map((g, idx) => (
+                        <option key={idx} value={g}>{g}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="field-group">
-                    <label className="field-label">Tags / Keywords</label>
+                    <label className="field-label required">Language</label>
+                    <select
+                      className="field-select"
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      required
+                    >
+                      {LANGUAGES.map((l, idx) => (
+                        <option key={idx} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="field-group">
+                    <label className="field-label">Tags (comma separated)</label>
                     <input
                       type="text"
                       className="field-input"
-                      placeholder="e.g. classic, love, 1920s (comma-separated)"
+                      placeholder="e.g. classic, mystery, fiction"
                       value={tags}
                       onChange={(e) => setTags(e.target.value)}
                     />
-                    <span className="field-hint">Helps readers discover your book through search</span>
-                  </div>
-
-                  <div className="field-btn-row">
-                    <button type="button" className="prev-btn" onClick={() => setActiveSection(0)}>← Previous</button>
-                    <button type="button" className="next-btn" onClick={() => setActiveSection(2)}>Next: Publication →</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* ════ SECTION 3: Publication Details ════ */}
+            {/* SECTION 3: Publication */}
             <div className="form-section">
               <div className="section-header" onClick={() => setActiveSection(2)}>
                 <span className="section-number">3</span>
@@ -330,108 +346,90 @@ const UploadBooks = () => {
 
               {activeSection === 2 && (
                 <div className="section-body">
-                  <div className="field-row">
-                    <div className="field-group">
-                      <label className="field-label">Publisher</label>
+                  <div className="field-group">
+                    <label className="field-label">Publisher</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={publisher}
+                      onChange={(e) => setPublisher(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label className="field-label">ISBN</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={isbn}
+                      onChange={(e) => setIsbn(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label className="field-label">Edition</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="e.g. 1st Edition"
+                      value={edition}
+                      onChange={(e) => setEdition(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <div className="field-group half-width">
+                      <label className="field-label">Publication Year</label>
                       <input
                         type="text"
                         className="field-input"
-                        placeholder="e.g. Penguin Books"
-                        value={publisher}
-                        onChange={(e) => setPublisher(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="field-group">
-                      <label className="field-label">Publication Year</label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        placeholder="e.g. 2024"
-                        min="1000"
-                        max={new Date().getFullYear()}
                         value={pubYear}
                         onChange={(e) => setPubYear(e.target.value)}
                       />
                     </div>
-                  </div>
 
-                  <div className="field-row">
-                    <div className="field-group">
-                      <label className="field-label">ISBN</label>
+                    <div className="field-group half-width">
+                      <label className="field-label">Page Count</label>
                       <input
-                        type="text"
+                        type="number"
                         className="field-input"
-                        placeholder="e.g. 978-3-16-148410-0"
-                        value={isbn}
-                        onChange={(e) => setIsbn(e.target.value)}
+                        value={pages}
+                        onChange={(e) => setPages(e.target.value)}
                       />
                     </div>
-
-                    <div className="field-group">
-                      <label className="field-label">Edition</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="e.g. 1st, 2nd, Revised"
-                        value={edition}
-                        onChange={(e) => setEdition(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="field-group" style={{ maxWidth: "48%" }}>
-                    <label className="field-label">Number of Pages</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      placeholder="e.g. 320"
-                      min="1"
-                      value={pages}
-                      onChange={(e) => setPages(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="field-btn-row">
-                    <button type="button" className="prev-btn" onClick={() => setActiveSection(1)}>← Previous</button>
-                    <button type="button" className="next-btn" onClick={() => setActiveSection(3)}>Next: Pricing & Files →</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* ════ SECTION 4: Pricing & Files ════ */}
+            {/* SECTION 4: Pricing & Files */}
             <div className="form-section">
               <div className="section-header" onClick={() => setActiveSection(3)}>
                 <span className="section-number">4</span>
-                <h3>Pricing &amp; Files</h3>
+                <h3>Pricing, Revisions & Files</h3>
                 <span className="section-toggle">{activeSection === 3 ? "▲" : "▼"}</span>
               </div>
 
               {activeSection === 3 && (
                 <div className="section-body">
-                  {/* Free toggle */}
-                  <div className="toggle-row">
-                    <label className="toggle-label">
+                  <div className="pricing-toggle-wrap" style={{ margin: "10px 0" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "#5c381f", fontWeight: "bold", cursor: "pointer" }}>
                       <input
                         type="checkbox"
-                        className="toggle-checkbox"
                         checked={isFree}
                         onChange={(e) => setIsFree(e.target.checked)}
                       />
-                      <span className="toggle-switch"></span>
-                      Make this book <strong>Free</strong>
+                      Release as Free Publication
                     </label>
                   </div>
 
                   {!isFree && (
-                    <div className="field-row">
-                      <div className="field-group">
-                        <label className="field-label required">Purchase Price (₹)</label>
+                    <div className="form-row">
+                      <div className="field-group half-width">
+                        <label className="field-label required">Purchase Price (INR)</label>
                         <input
                           type="number"
                           className="field-input"
-                          placeholder="e.g. 299"
                           min="0"
                           step="0.01"
                           value={price}
@@ -440,73 +438,52 @@ const UploadBooks = () => {
                         />
                       </div>
 
-                      <div className="field-group">
-                        <label className="field-label">Rental Price / week (₹)</label>
+                      <div className="field-group half-width">
+                        <label className="field-label required">Daily Rent Price (INR)</label>
                         <input
                           type="number"
                           className="field-input"
-                          placeholder="e.g. 49 (optional)"
                           min="0"
                           step="0.01"
                           value={rentPrice}
                           onChange={(e) => setRentPrice(e.target.value)}
+                          required={!isFree}
                         />
                       </div>
                     </div>
                   )}
 
-                  {/* Free Trial Duration */}
+                  {!isFree && (
+                    <div className="field-group">
+                      <label className="field-label">Free Trial Length (Pages)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        min="1"
+                        value={trialDuration}
+                        onChange={(e) => setTrialDuration(e.target.value)}
+                      />
+                    </div>
+                  )}
+
                   <div className="field-group">
-                    <label className="field-label required">Free Trial Duration (Minutes)</label>
+                    <label className="field-label">Replacement Book File (Optional - PDF, EPUB, DOCX, TXT)</label>
                     <input
-                      type="number"
+                      type="file"
                       className="field-input"
-                      placeholder="e.g. 10"
-                      min="1"
-                      value={trialDuration}
-                      onChange={(e) => setTrialDuration(e.target.value)}
-                      required
+                      accept=".pdf,.epub,.docx,.txt"
+                      onChange={(e) => setFile(e.target.files[0])}
                     />
-                    <span className="field-hint">Specify the duration readers can read this book for free before purchase/rental is required.</span>
                   </div>
 
-                  {/* Book File */}
                   <div className="field-group">
-                    <label className="field-label required">Book File (PDF / EPUB)</label>
-                    <div className="file-drop-zone" onClick={() => document.getElementById("bookFile").click()}>
-                      <span className="file-drop-icon">📄</span>
-                      <span className="file-drop-text">
-                        {file ? file.name : "Click or drag to upload your book file"}
-                      </span>
-                      <span className="file-drop-hint">PDF, EPUB — max 50 MB</span>
-                      <input
-                        id="bookFile"
-                        type="file"
-                        accept=".pdf,.epub"
-                        style={{ display: "none" }}
-                        onChange={(e) => setFile(e.target.files[0])}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Cover Image */}
-                  <div className="field-group">
-                    <label className="field-label">Cover Image</label>
-                    <div className="file-drop-zone" onClick={() => document.getElementById("coverImg").click()}>
-                      <span className="file-drop-icon">🖼️</span>
-                      <span className="file-drop-text">
-                        {cover ? cover.name : "Click or drag to upload cover image"}
-                      </span>
-                      <span className="file-drop-hint">JPG, PNG, WebP — recommended 600 × 900 px</span>
-                      <input
-                        id="coverImg"
-                        type="file"
-                        accept="image/*"
-                        style={{ display: "none" }}
-                        onChange={handleCoverChange}
-                      />
-                    </div>
+                    <label className="field-label">Replacement Cover Image (Optional)</label>
+                    <input
+                      type="file"
+                      className="field-input"
+                      accept="image/*"
+                      onChange={handleCoverChange}
+                    />
                   </div>
 
                   {/* Copyright Declaration */}
@@ -515,8 +492,7 @@ const UploadBooks = () => {
                     background: "rgba(92, 56, 31, 0.05)",
                     border: "1.5px dashed #9a7040",
                     padding: "14px 18px",
-                    borderRadius: "2px",
-                    textAlign: "left"
+                    borderRadius: "2px"
                   }}>
                     <p style={{ margin: "0 0 10px 0", fontSize: "0.85rem", color: "#5c381f", fontStyle: "italic", lineHeight: "1.5" }}>
                       "I confirm that I am the original author of this content or I have the legal rights to publish it. I understand that submitting copyrighted material without permission may result in removal of my content and suspension of my account."
@@ -530,21 +506,32 @@ const UploadBooks = () => {
                       I accept the Copyright Declaration.
                     </label>
                   </div>
-
-                  <div className="field-btn-row">
-                    <button type="button" className="prev-btn" onClick={() => setActiveSection(2)}>← Previous</button>
-                    <button type="submit" className="submit-btn" disabled={loading || !declarationAccepted} style={{ opacity: declarationAccepted ? 1 : 0.6 }}>
-                      {loading ? (
-                        <><span className="spinner"></span> Uploading &amp; Scanning…</>
-                      ) : (
-                        "📚 Publish Book"
-                      )}
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
 
+            <button
+              type="submit"
+              className={`submit-btn ${loading || !declarationAccepted ? "disabled" : ""}`}
+              disabled={loading || !declarationAccepted}
+              style={{
+                width: "100%",
+                padding: "14px",
+                fontFamily: "Cinzel, serif",
+                fontSize: "0.95rem",
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                background: "linear-gradient(to bottom, #5c381f, #3e1b0c)",
+                color: "#fbf8f0",
+                border: "none",
+                cursor: "pointer",
+                marginTop: "20px",
+                borderRadius: "2px",
+                opacity: declarationAccepted ? 1 : 0.6
+              }}
+            >
+              {loading ? "Saving Revisions..." : "Confirm & Save Revision"}
+            </button>
           </form>
         </div>
       </div>
@@ -552,4 +539,4 @@ const UploadBooks = () => {
   );
 };
 
-export default UploadBooks;
+export default EditBook;

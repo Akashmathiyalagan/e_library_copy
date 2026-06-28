@@ -37,6 +37,12 @@ db = client["auth_db"]
 users_collection = db["users"]
 authors_collection = db["authors"]
 books_collection = db["books"]
+plagiarism_reports_collection = db["plagiarism_reports"]
+copyright_reports_collection = db["copyright_reports"]
+user_strikes_collection = db["user_strikes"]
+publication_versions_collection = db["publication_versions"]
+moderation_queue_collection = db["moderation_queue"]
+copyright_declarations_collection = db["copyright_declarations"]
 
 UPLOAD_FOLDER = 'uploads/books'
 COVER_FOLDER = 'uploads/covers'
@@ -49,6 +55,76 @@ os.makedirs(ASSETS_FOLDER, exist_ok=True)
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     return send_from_directory('uploads', filename)
+
+# ===== Text Extraction Helpers =====
+def extract_docx_text(filepath):
+    import zipfile
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(filepath) as docx:
+            xml_content = docx.read('word/document.xml')
+            root = ET.fromstring(xml_content)
+            texts = []
+            for elem in root.iter():
+                if elem.tag.endswith('t'):
+                    if elem.text:
+                        texts.append(elem.text)
+            return "\n".join(texts)
+    except Exception as e:
+        print(f"Error parsing DOCX: {e}")
+        return ""
+
+def extract_epub_text(filepath):
+    import zipfile
+    import re
+    try:
+        texts = []
+        with zipfile.ZipFile(filepath) as epub:
+            for name in epub.namelist():
+                if name.lower().endswith(('.html', '.xhtml', '.xml')):
+                    try:
+                        content = epub.read(name).decode('utf-8', errors='ignore')
+                        clean_text = re.sub(r'<[^>]+>', ' ', content)
+                        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+                        if clean_text:
+                            texts.append(clean_text)
+                    except Exception:
+                        pass
+        return "\n".join(texts)
+    except Exception as e:
+        print(f"Error parsing EPUB: {e}")
+        return ""
+
+def extract_pdf_text(filepath):
+    content = ""
+    try:
+        import pdfplumber
+        with pdfplumber.open(filepath) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    content += page_text + "\n"
+    except Exception as e:
+        print(f"Failed to extract PDF text: {e}")
+    return content
+
+def extract_book_text(filepath):
+    if not filepath or not os.path.exists(filepath):
+        return ""
+    ext = filepath.lower().split('.')[-1]
+    if ext == 'pdf':
+        return extract_pdf_text(filepath)
+    elif ext == 'docx':
+        return extract_docx_text(filepath)
+    elif ext == 'epub':
+        return extract_epub_text(filepath)
+    else:
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except Exception as e:
+            print(f"Failed to read file as text: {e}")
+            return ""
 
 def format_book(book):
     book["_id"] = str(book["_id"])
@@ -85,6 +161,268 @@ def format_book(book):
     book["is_new"] = is_new
 
     return book
+
+# ===== Digital Fingerprinting & Similarity Helpers =====
+def calculate_sha256(filepath):
+    import hashlib
+    sha256 = hashlib.sha256()
+    try:
+        with open(filepath, 'rb') as f:
+            while True:
+                data = f.read(65536)
+                if not data:
+                    break
+                sha256.update(data)
+        return sha256.hexdigest()
+    except Exception as e:
+        print(f"Error calculating SHA256: {e}")
+        return ""
+
+def tokenize_and_clean(text):
+    import re
+    if not text:
+        return []
+    # Clean text (strip punctuation and lowercase)
+    text = re.sub(r'[^\w\s]', ' ', text.lower())
+    words = [w for w in text.split() if len(w) > 2]
+    # Standard English stop words
+    stopwords = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 
+        'for', 'on', 'with', 'at', 'by', 'from', 'this', 'that', 'these', 'those', 'it', 'its',
+        'you', 'your', 'he', 'she', 'they', 'we', 'us', 'i', 'my', 'me'
+    }
+    return [w for w in words if w not in stopwords]
+
+def cosine_similarity_tf(words1, words2):
+    from collections import Counter
+    import math
+    if not words1 or not words2:
+        return 0.0
+    cnt1 = Counter(words1)
+    cnt2 = Counter(words2)
+    
+    intersection = set(cnt1.keys()) & set(cnt2.keys())
+    numerator = sum([cnt1[x] * cnt2[x] for x in intersection])
+    
+    sum1 = sum([cnt1[x]**2 for x in cnt1.keys()])
+    sum2 = sum([cnt2[x]**2 for x in cnt2.keys()])
+    denominator = math.sqrt(sum1) * math.sqrt(sum2)
+    
+    if not denominator:
+        return 0.0
+    return float(numerator) / denominator
+
+def check_plagiarism_local(text1, text2):
+    words1 = tokenize_and_clean(text1)
+    words2 = tokenize_and_clean(text2)
+    
+    # Calculate overall word overlap (semantic proxy)
+    overall_similarity = cosine_similarity_tf(words1, words2)
+    
+    # Calculate paragraph level alignments
+    paragraphs1 = [p.strip() for p in text1.split('\n') if len(p.strip()) > 50]
+    paragraphs2 = [p.strip() for p in text2.split('\n') if len(p.strip()) > 50]
+    
+    matching_paragraphs = []
+    exact_matches_count = 0
+    
+    if paragraphs1 and paragraphs2:
+        for p1 in paragraphs1:
+            p1_words = tokenize_and_clean(p1)
+            if not p1_words:
+                continue
+            best_score = 0.0
+            best_match_text = ""
+            
+            for p2 in paragraphs2:
+                p2_words = tokenize_and_clean(p2)
+                if not p2_words:
+                    continue
+                score = cosine_similarity_tf(p1_words, p2_words)
+                if score > best_score:
+                    best_score = score
+                    best_match_text = p2
+                    
+            if best_score > 0.70:
+                matching_paragraphs.append({
+                    "source_section": p1,
+                    "match_section": best_match_text,
+                    "similarity": round(best_score * 100, 2)
+                })
+                if best_score > 0.95:
+                    exact_matches_count += 1
+                    
+    total_p = len(paragraphs1) if paragraphs1 else 1
+    paragraph_similarity = len(matching_paragraphs) / total_p
+    
+    return {
+        "overall_similarity": round(overall_similarity * 100, 2),
+        "paragraph_similarity": round(paragraph_similarity * 100, 2),
+        "exact_matches_count": exact_matches_count,
+        "matching_sections": matching_paragraphs[:10]  # Cap reports to top 10 matches
+    }
+
+# ===== User Strike Helper =====
+def issue_user_strike(user_email, reason):
+    # Find current strikes count
+    strike_doc = user_strikes_collection.find_one({"email": user_email})
+    if not strike_doc:
+        strikes = 0
+        history = []
+    else:
+        strikes = strike_doc.get("strikes", 0)
+        history = strike_doc.get("history", [])
+        
+    strikes += 1
+    history.append({
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "reason": reason,
+        "strike_number": strikes
+    })
+    
+    status = "active"
+    if strikes == 1:
+        action = "Warning Issued"
+    elif strikes == 2:
+        action = "Temporary Publishing Restriction (48 Hours)"
+    elif strikes == 3:
+        action = "Account Suspended"
+    else:
+        action = "Permanently Banned"
+        status = "suspended"
+        
+    user_strikes_collection.update_one(
+        {"email": user_email},
+        {"$set": {
+            "strikes": strikes,
+            "history": history,
+            "action_taken": action,
+            "status": status
+        }},
+        upsert=True
+    )
+
+# ===== Asynchronous Plagiarism Background Scan Task =====
+def run_plagiarism_scan(book_id):
+    try:
+        book = books_collection.find_one({"_id": ObjectId(book_id)})
+        if not book:
+            print(f"Book {book_id} not found for scanning.")
+            return
+            
+        filepath = book.get("file_path")
+        if not filepath or not os.path.exists(filepath):
+            books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
+            return
+            
+        # 1. SHA-256 Exact Duplicate Check
+        file_hash = calculate_sha256(filepath)
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"sha256_hash": file_hash}})
+        
+        duplicate_book = books_collection.find_one({
+            "sha256_hash": file_hash,
+            "_id": {"$ne": ObjectId(book_id)},
+            "status": {"$in": ["published", "pending_review", "copyright_review"]}
+        })
+        
+        if duplicate_book:
+            # Exact duplicate file match -> Auto-reject and issue warning/strike
+            books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "rejected"}})
+            plagiarism_reports_collection.insert_one({
+                "book_id": str(book_id),
+                "similarity_score": 100.0,
+                "matched_book_id": str(duplicate_book["_id"]),
+                "matched_title": duplicate_book.get("title"),
+                "matching_sections": [{"source_section": "Entire File Match", "match_section": "Entire File Match", "similarity": 100.0}],
+                "exact_matches_count": 1,
+                "ai_explanation": f"File is an exact binary duplicate (SHA-256 match) of existing book '{duplicate_book.get('title')}' uploaded by another author.",
+                "recommended_action": "auto_reject",
+                "scanned_at": datetime.datetime.utcnow()
+            })
+            uploader_email = book.get("uploaded_by")
+            issue_user_strike(uploader_email, f"Attempted to upload exact duplicate of '{duplicate_book.get('title')}'")
+            return
+            
+        # 2. Text Similarity comparison
+        text1 = extract_book_text(filepath)
+        if not text1 or not text1.strip():
+            books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
+            return
+            
+        # Clean and store normalized fingerprint
+        cleaned_words = tokenize_and_clean(text1)
+        fingerprint = " ".join(cleaned_words[:100])
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"text_fingerprint": fingerprint}})
+        
+        highest_similarity = 0.0
+        highest_match_book = None
+        matching_report = None
+        
+        other_books = list(books_collection.find({
+            "_id": {"$ne": ObjectId(book_id)},
+            "status": {"$in": ["published", "pending_review", "copyright_review"]}
+        }))
+        
+        for ob in other_books:
+            ob_filepath = ob.get("file_path")
+            text2 = extract_book_text(ob_filepath)
+            if not text2 or not text2.strip():
+                continue
+                
+            report = check_plagiarism_local(text1, text2)
+            if report["overall_similarity"] > highest_similarity:
+                highest_similarity = report["overall_similarity"]
+                highest_match_book = ob
+                matching_report = report
+                
+        # 3. Decision Rules
+        auto_publish_threshold = 30.0
+        review_threshold = 70.0
+        
+        status = "published"
+        action = "publish"
+        explanation = "Content similarity check completed with low match index. Autopublished."
+        
+        if highest_similarity > review_threshold:
+            status = "copyright_review"
+            action = "copyright_review"
+            explanation = f"Critical similarity level detected ({highest_similarity}%). Flagged as potential copyright infringement against '{highest_match_book.get('title')}'."
+        elif highest_similarity > auto_publish_threshold:
+            status = "pending_review"
+            action = "pending_review"
+            explanation = f"Moderate similarity level detected ({highest_similarity}%). Flagged for moderator review against '{highest_match_book.get('title')}'."
+            
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": status}})
+        
+        plagiarism_reports_collection.insert_one({
+            "book_id": str(book_id),
+            "similarity_score": highest_similarity,
+            "matched_book_id": str(highest_match_book["_id"]) if highest_match_book else None,
+            "matched_title": highest_match_book.get("title") if highest_match_book else None,
+            "matching_sections": matching_report["matching_sections"] if matching_report else [],
+            "exact_matches_count": matching_report["exact_matches_count"] if matching_report else 0,
+            "ai_explanation": explanation,
+            "recommended_action": action,
+            "scanned_at": datetime.datetime.utcnow()
+        })
+        
+        if status in ["pending_review", "copyright_review"]:
+            moderation_queue_collection.insert_one({
+                "book_id": str(book_id),
+                "title": book.get("title"),
+                "author": book.get("author"),
+                "uploader": book.get("uploaded_by"),
+                "similarity_score": highest_similarity,
+                "matched_book_title": highest_match_book.get("title") if highest_match_book else None,
+                "reason": explanation,
+                "status": "pending",
+                "queue_type": "plagiarism",
+                "created_at": datetime.datetime.utcnow()
+            })
+            
+    except Exception as e:
+        print(f"Error in plagiarism scan thread for book {book_id}: {e}")
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
 
 def format_profile(user):
     purchased_book_ids = user.get("purchased_books", [])
@@ -392,6 +730,16 @@ def upload_book():
     if not author_doc:
         return jsonify({"error": "Only registered authors can upload books."}), 403
 
+    # Check if uploader is suspended/banned due to copyright strikes
+    strike_doc = user_strikes_collection.find_one({"email": author_email})
+    if strike_doc and strike_doc.get("status") == "suspended":
+        return jsonify({"error": "Your account is currently suspended due to copyright violations."}), 403
+
+    # Verify Copyright Declaration
+    declaration_accepted = request.form.get("declaration_accepted", "false").lower() == "true"
+    if not declaration_accepted:
+        return jsonify({"error": "You must accept the Copyright Declaration before publishing."}), 400
+
     official_name = author_doc.get("name", "").strip()
     pen_name = author_doc.get("penName", "").strip()
 
@@ -413,6 +761,14 @@ def upload_book():
     })
     if existing_book:
         return jsonify({"error": f"A book titled '{title}' by '{author}' is already published in the library."}), 409
+
+    # Record Copyright Declaration acceptance
+    copyright_declarations_collection.insert_one({
+        "user_id": str(author_doc["_id"]),
+        "email": author_email,
+        "accepted": True,
+        "timestamp": datetime.datetime.utcnow()
+    })
 
     # ── Optional / extended metadata ────────────────────────
     genre      = request.form.get('genre', '').strip()
@@ -442,7 +798,7 @@ def upload_book():
         cover_path = os.path.join(COVER_FOLDER, covername)
         cover.save(cover_path)
 
-    books_collection.insert_one({
+    res = books_collection.insert_one({
         # Core
         "title":       title,
         "description": description,
@@ -466,10 +822,17 @@ def upload_book():
         "file_path":   filepath,
         "cover_path":  cover_path,
         "uploaded_at": datetime.datetime.utcnow(),
-        "uploaded_by": decoded.get("email"),
+        "uploaded_by": author_email,
+        "status":      "scanning"
     })
 
-    return jsonify({"message": "Book uploaded successfully"})
+    # Trigger background Plagiarism & Fingerprint Scanning
+    import threading
+    scan_thread = threading.Thread(target=run_plagiarism_scan, args=(str(res.inserted_id),))
+    scan_thread.daemon = True
+    scan_thread.start()
+
+    return jsonify({"message": "Book uploaded successfully! Scanning for plagiarism in progress.", "bookId": str(res.inserted_id)})
 
 # ===== Get Author's Books =====
 @app.route('/api/authors/my_books', methods=['GET'])
@@ -518,10 +881,156 @@ def delete_book(book_id):
     books_collection.delete_one({"_id": ObjectId(book_id)})
     return jsonify({"message": "Book deleted successfully"}), 200
 
+# ===== Edit Book Route (Version Controlled) =====
+@app.route('/api/books/edit/<book_id>', methods=['POST'])
+def edit_book(book_id):
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({"error": "Missing token"}), 401
+
+    try:
+        decoded = jwt.decode(token.split(" ")[-1], app.config['SECRET_KEY'], algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    author_email = decoded.get("email")
+    
+    # Check suspension
+    strike_doc = user_strikes_collection.find_one({"email": author_email})
+    if strike_doc and strike_doc.get("status") == "suspended":
+        return jsonify({"error": "Your account is currently suspended due to copyright violations."}), 403
+
+    # Check declaration
+    declaration_accepted = request.form.get("declaration_accepted", "false").lower() == "true"
+    if not declaration_accepted:
+        return jsonify({"error": "You must accept the Copyright Declaration before publishing edits."}), 400
+
+    # Retrieve existing book
+    book = books_collection.find_one({"_id": ObjectId(book_id), "uploaded_by": author_email})
+    if not book:
+        return jsonify({"error": "Book not found or unauthorized"}), 404
+
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description', '').strip()
+    author = request.form.get('author', '').strip()
+    price = request.form.get('price', '0').strip()
+    file = request.files.get('file')
+    cover = request.files.get('cover')
+
+    if not all([title, description, author]):
+        return jsonify({"error": "Missing required fields (title, description, author)"}), 400
+
+    # Fetch official author info
+    author_doc = authors_collection.find_one({"email": author_email})
+    official_name = author_doc.get("name", "").strip() if author_doc else ""
+    pen_name = author_doc.get("penName", "").strip() if author_doc else ""
+    
+    allowed_names = [official_name.lower()]
+    if pen_name:
+        allowed_names.append(pen_name.lower())
+    if author.lower() not in allowed_names:
+        return jsonify({"error": f"Ownership mismatch: You can only publish under your registered name '{official_name}'."}), 403
+
+    # 1. Archive current version to publication_versions
+    ver_count = publication_versions_collection.count_documents({"book_id": book_id})
+    version_number = ver_count + 1
+    
+    publication_versions_collection.insert_one({
+        "book_id": book_id,
+        "version_number": version_number,
+        "title": book.get("title"),
+        "description": book.get("description"),
+        "price": book.get("price"),
+        "rent_price": book.get("rent_price"),
+        "genre": book.get("genre"),
+        "language": book.get("language"),
+        "tags": book.get("tags"),
+        "file_path": book.get("file_path"),
+        "cover_path": book.get("cover_path"),
+        "updated_at": datetime.datetime.utcnow(),
+        "updated_by": author_email
+    })
+
+    # 2. Process file changes
+    filepath = book.get("file_path")
+    if file and file.filename:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+    cover_path = book.get("cover_path")
+    if cover and cover.filename:
+        covername = secure_filename(cover.filename)
+        cover_path = os.path.join(COVER_FOLDER, covername)
+        cover.save(cover_path)
+
+    genre = request.form.get('genre', '').strip()
+    language = request.form.get('language', 'English').strip()
+    tags = request.form.get('tags', '').strip()
+    publisher = request.form.get('publisher', '').strip()
+    isbn = request.form.get('isbn', '').strip()
+    edition = request.form.get('edition', '').strip()
+    pub_year = request.form.get('pub_year', '').strip()
+    pages = request.form.get('pages', '').strip()
+    rent_price = request.form.get('rent_price', '0').strip()
+    is_free = request.form.get('is_free', 'false').lower() == 'true'
+    trial_duration = request.form.get('trial_duration', '10').strip()
+
+    tag_list = [t.strip() for t in tags.split(',') if t.strip()] if tags else []
+
+    # Update main book entry and set status to scanning
+    books_collection.update_one(
+        {"_id": ObjectId(book_id)},
+        {"$set": {
+            "title": title,
+            "description": description,
+            "author": author,
+            "price": price,
+            "genre": genre,
+            "language": language,
+            "tags": tag_list,
+            "publisher": publisher,
+            "isbn": isbn,
+            "edition": edition,
+            "pub_year": pub_year,
+            "pages": pages,
+            "rent_price": rent_price,
+            "is_free": is_free,
+            "trial_duration": trial_duration,
+            "file_path": filepath,
+            "cover_path": cover_path,
+            "updated_at": datetime.datetime.utcnow(),
+            "status": "scanning"
+        }}
+    )
+
+    # Record Copyright Declaration acceptance
+    copyright_declarations_collection.insert_one({
+        "user_id": str(author_doc["_id"]) if author_doc else "unknown",
+        "email": author_email,
+        "accepted": True,
+        "timestamp": datetime.datetime.utcnow()
+    })
+
+    # Trigger background Plagiarism check
+    import threading
+    scan_thread = threading.Thread(target=run_plagiarism_scan, args=(book_id,))
+    scan_thread.daemon = True
+    scan_thread.start()
+
+    return jsonify({"message": "Revision saved. Scanning for plagiarism in progress.", "bookId": book_id}), 200
+
 # ===== Get All Books =====
 @app.route("/get_uploaded_books", methods=["GET"])
 def get_uploaded_books():
-    books = list(books_collection.find())
+    books = list(books_collection.find({
+        "$or": [
+            {"status": "published"},
+            {"status": {"$exists": False}}
+        ]
+    }))
     formatted_books = [format_book(book) for book in books]
     return jsonify({"books": formatted_books}), 200
 
@@ -1252,8 +1761,200 @@ def update_author_profile():
         return jsonify({"error": "Author not found"}), 404
 
     authors_collection.update_one({"email": email}, {"$set": update_fields})
+    authors_collection.update_one({"email": email}, {"$set": update_fields})
     updated = authors_collection.find_one({"email": email})
     return jsonify(format_profile(updated)), 200
+
+
+# ===== Community Report Route =====
+@app.route("/api/books/report", methods=["POST"])
+def report_book():
+    data = request.get_json()
+    book_id = data.get("bookId")
+    reason = data.get("reason", "Other")
+    comments = data.get("comments", "")
+    
+    if not book_id:
+        return jsonify({"error": "Missing book ID"}), 400
+        
+    try:
+        book = books_collection.find_one({"_id": ObjectId(book_id)})
+    except Exception:
+        return jsonify({"error": "Invalid book ID format"}), 400
+        
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+        
+    # Record community report
+    copyright_reports_collection.insert_one({
+        "book_id": book_id,
+        "reason": reason,
+        "comments": comments,
+        "reported_at": datetime.datetime.utcnow()
+    })
+    
+    # Count total reports
+    report_count = copyright_reports_collection.count_documents({"book_id": book_id})
+    
+    # Auto-moderate if >= 3 reports
+    if report_count >= 3:
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "pending_review"}})
+        
+        # Add to moderation queue
+        exists = moderation_queue_collection.find_one({"book_id": book_id, "queue_type": "report"})
+        if not exists:
+            moderation_queue_collection.insert_one({
+                "book_id": book_id,
+                "title": book.get("title"),
+                "author": book.get("author"),
+                "uploader": book.get("uploaded_by"),
+                "reason": f"Community flagged: {report_count} reports. Primary issue: {reason}",
+                "status": "pending",
+                "queue_type": "report",
+                "created_at": datetime.datetime.utcnow()
+            })
+            
+    return jsonify({"message": "Thank you. Your report has been submitted to the moderation team."}), 200
+
+
+# ===== Moderator Queue Endpoint =====
+@app.route("/api/moderator/queue", methods=["GET"])
+def get_moderator_queue():
+    queue_items = list(moderation_queue_collection.find({"status": "pending"}))
+    for item in queue_items:
+        item["_id"] = str(item["_id"])
+        item["created_at"] = item["created_at"].isoformat() if isinstance(item["created_at"], datetime.datetime) else str(item["created_at"])
+    return jsonify(queue_items), 200
+
+
+# ===== Moderator Side-by-Side Comparison API =====
+@app.route("/api/moderator/compare/<book_id>", methods=["GET"])
+def get_moderator_compare(book_id):
+    try:
+        book = books_collection.find_one({"_id": ObjectId(book_id)})
+    except Exception:
+        return jsonify({"error": "Invalid book ID format"}), 400
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+        
+    report = plagiarism_reports_collection.find_one({"book_id": book_id})
+    
+    matched_book = None
+    if report and report.get("matched_book_id"):
+        matched_book = books_collection.find_one({"_id": ObjectId(report.get("matched_book_id"))})
+        
+    book_text = extract_book_text(book.get("file_path"))[:4000]
+    matched_text = extract_book_text(matched_book.get("file_path"))[:4000] if matched_book else ""
+    
+    versions = list(publication_versions_collection.find({"book_id": book_id}))
+    for v in versions:
+        v["_id"] = str(v["_id"])
+        v["updated_at"] = v["updated_at"].isoformat() if isinstance(v["updated_at"], datetime.datetime) else str(v["updated_at"])
+
+    return jsonify({
+        "book": {
+            "id": str(book["_id"]),
+            "title": book.get("title"),
+            "author": book.get("author"),
+            "description": book.get("description"),
+            "uploaded_by": book.get("uploaded_by"),
+            "status": book.get("status"),
+            "text_sample": book_text
+        },
+        "matched_book": {
+            "id": str(matched_book["_id"]),
+            "title": matched_book.get("title"),
+            "author": matched_book.get("author"),
+            "description": matched_book.get("description"),
+            "uploaded_by": matched_book.get("uploaded_by"),
+            "text_sample": matched_text
+        } if matched_book else None,
+        "plagiarism_report": {
+            "similarity_score": report.get("similarity_score", 0.0) if report else 0.0,
+            "matching_sections": report.get("matching_sections", []) if report else [],
+            "exact_matches_count": report.get("exact_matches_count", 0) if report else 0,
+            "ai_explanation": report.get("ai_explanation", "No similarity report found.") if report else "No similarity report found."
+        },
+        "versions": versions
+    }), 200
+
+
+# ===== Moderator Action Endpoint =====
+@app.route("/api/moderator/action", methods=["POST"])
+def post_moderator_action():
+    data = request.get_json()
+    book_id = data.get("bookId")
+    action = data.get("action") 
+    reason = data.get("reason", "")
+    
+    if not book_id or not action:
+        return jsonify({"error": "Missing bookId or action"}), 400
+        
+    try:
+        book = books_collection.find_one({"_id": ObjectId(book_id)})
+    except Exception:
+        return jsonify({"error": "Invalid book ID format"}), 400
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+        
+    uploader_email = book.get("uploaded_by")
+    
+    if action in ["approve", "restore"]:
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": "published"}})
+        moderation_queue_collection.update_many({"book_id": book_id}, {"$set": {"status": "resolved"}})
+        
+    elif action in ["reject", "remove"]:
+        books_collection.update_one({"_id": ObjectId(book_id)}, {"$set": {"status": action + "d"}})
+        moderation_queue_collection.update_many({"book_id": book_id}, {"$set": {"status": "resolved"}})
+        
+        issue_user_strike(uploader_email, f"Moderator action ({action}): {reason or 'Copyright/plagiarism violation'}")
+        
+    elif action == "warning":
+        issue_user_strike(uploader_email, f"Moderator warning: {reason or 'Abuse report warnings issued.'}")
+        
+    return jsonify({"message": f"Moderator action '{action}' applied successfully."}), 200
+
+
+# ===== Moderator Strike Overview & Override API =====
+@app.route("/api/moderator/strikes/<email>", methods=["GET"])
+def get_user_strikes(email):
+    strike_doc = user_strikes_collection.find_one({"email": email})
+    if not strike_doc:
+        return jsonify({"strikes": 0, "status": "active", "history": []}), 200
+        
+    strike_doc["_id"] = str(strike_doc["_id"])
+    return jsonify(strike_doc), 200
+
+
+@app.route("/api/moderator/strikes/override", methods=["POST"])
+def override_user_strikes():
+    data = request.get_json()
+    email = data.get("email")
+    action = data.get("action") 
+    
+    if not email or not action:
+        return jsonify({"error": "Missing email or action"}), 400
+        
+    if action == "reset":
+        user_strikes_collection.update_one(
+            {"email": email},
+            {"$set": {"strikes": 0, "status": "active", "history": [{"timestamp": datetime.datetime.utcnow().isoformat(), "reason": "Strike override: Reset by administrator", "strike_number": 0}]}},
+            upsert=True
+        )
+    elif action == "suspend":
+        user_strikes_collection.update_one(
+            {"email": email},
+            {"$set": {"status": "suspended", "action_taken": "Account Suspended manually by administrator"}},
+            upsert=True
+        )
+    elif action == "unsuspend":
+        user_strikes_collection.update_one(
+            {"email": email},
+            {"$set": {"status": "active", "strikes": 0, "action_taken": "Restored manually by administrator"}},
+            upsert=True
+        )
+        
+    return jsonify({"message": f"User strike status set to '{action}' successfully."}), 200
 
 
 # ===== Test Route =====

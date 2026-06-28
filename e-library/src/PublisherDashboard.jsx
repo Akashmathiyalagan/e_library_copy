@@ -87,13 +87,14 @@ const PublisherDashboard = () => {
                             <th>Author Name</th>
                             <th>File</th>
                             <th>Price</th>
+                            <th>Status</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {books.length === 0 ? (
                             <tr>
-                                <td colSpan="5">You haven’t uploaded any books yet.</td>
+                                <td colSpan="6">You haven’t uploaded any books yet.</td>
                             </tr>
                         ) : (
                             books
@@ -108,6 +109,27 @@ const PublisherDashboard = () => {
                                             </a>
                                         </td>
                                         <td>${book.price || "Free"}</td>
+                                        <td>
+                                            <span style={{
+                                                display: "inline-block",
+                                                padding: "4px 8px",
+                                                borderRadius: "2px",
+                                                fontSize: "0.75rem",
+                                                fontWeight: "bold",
+                                                textTransform: "uppercase",
+                                                backgroundColor: book.status === "scanning" ? "#d35400" :
+                                                                 book.status === "pending_review" ? "#f39c12" :
+                                                                 book.status === "copyright_review" ? "#e74c3c" :
+                                                                 book.status === "rejected" || book.status === "removed" ? "#c0392b" : "#27ae60",
+                                                color: "#ffffff"
+                                            }}>
+                                                {book.status === "scanning" ? "Scanning" :
+                                                 book.status === "pending_review" ? "Pending Review" :
+                                                 book.status === "copyright_review" ? "Copyright Review" :
+                                                 book.status === "rejected" ? "Rejected" :
+                                                 book.status === "removed" ? "Removed" : "Published"}
+                                            </span>
+                                        </td>
                                         <td>
                                             <button onClick={() => handleEdit(book._id)}>Edit</button>
                                             <button onClick={() => handleDelete(book._id)}>Delete</button>
