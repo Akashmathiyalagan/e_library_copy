@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "auth.py": {
+      "runtime": "@vercel/python"
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "auth.py"
+    }
+  ]
+}
