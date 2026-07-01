@@ -31,8 +31,14 @@ CORS(app, supports_credentials=True)
 app.config['SECRET_KEY'] = 'your-secret-key'
 
 # MongoDB setup
-client = MongoClient("mongodb://localhost:27017")
-db = client["auth_db"]
+# MongoDB setup
+MONGO_URI = os.getenv("MONGO_URI")
+
+if not MONGO_URI:
+    raise Exception("MONGO_URI is not set")
+
+client = MongoClient(MONGO_URI)
+db = client["e_library"]
 
 users_collection = db["users"]
 authors_collection = db["authors"]
