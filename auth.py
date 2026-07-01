@@ -14,6 +14,13 @@ import razorpay
 load_dotenv()
 
 
+print("=" * 50)
+print("MONGO_URI =", os.getenv("MONGO_URI"))
+print("All Environment Variables:")
+print(os.environ)
+print("=" * 50)
+
+
 # Initialize Razorpay Client
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
